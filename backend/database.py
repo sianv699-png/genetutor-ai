@@ -16,3 +16,5 @@ db = client[os.getenv("MONGODB_DB", "genetutor")]
 
 users = db["users"]
 users.create_index("email", unique=True)
+
+analyses = db["analyses"]
