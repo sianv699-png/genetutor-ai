@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+biopython
+python-dotenv
+python-multipart
+bcrypt
+pyjwt
+pymongo[srv]
