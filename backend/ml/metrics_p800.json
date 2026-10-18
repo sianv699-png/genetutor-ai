@@ -1,0 +1,134 @@
+{
+  "data_before_limits": {
+    "rows": 198342,
+    "distinct_pairs": 150,
+    "share_top5_pairs": 0.172,
+    "distinct_genes": 15690,
+    "share_top5_genes": 0.029
+  },
+  "data_after_limits": {
+    "rows": 114912,
+    "distinct_pairs": 150,
+    "share_top5_pairs": 0.07,
+    "distinct_genes": 13133,
+    "share_top5_genes": 0.016
+  },
+  "limits": {
+    "max_per_gene_per_class": 300,
+    "max_per_pair_per_class": 800
+  },
+  "class_counts": {
+    "pathogenic": 46509,
+    "benign": 68403
+  },
+  "cross_validation_by_gene": [
+    {
+      "name": "baseline_blosum",
+      "cv_mean": 0.63,
+      "cv_std": 0.009
+    },
+    {
+      "name": "logreg_all_features",
+      "cv_mean": 0.657,
+      "cv_std": 0.01
+    },
+    {
+      "name": "boosting_d2_n60",
+      "cv_mean": 0.665,
+      "cv_std": 0.011
+    },
+    {
+      "name": "boosting_d2_n150",
+      "cv_mean": 0.676,
+      "cv_std": 0.012
+    },
+    {
+      "name": "boosting_d3_n60",
+      "cv_mean": 0.677,
+      "cv_std": 0.011
+    },
+    {
+      "name": "boosting_d3_n150",
+      "cv_mean": 0.684,
+      "cv_std": 0.012
+    }
+  ],
+  "selected_model": "boosting_d3_n150",
+  "train_roc_auc": 0.686,
+  "test_metrics_new_genes": {
+    "roc_auc": 0.685,
+    "pr_auc": 0.59,
+    "balanced_accuracy": 0.633,
+    "f1": 0.59,
+    "brier": 0.224,
+    "confusion_matrix": [
+      [
+        10898,
+        6602
+      ],
+      [
+        4378,
+        7910
+      ]
+    ]
+  },
+  "overfit_gap": 0.001,
+  "baseline_blosum_test": {
+    "roc_auc": 0.636,
+    "pr_auc": 0.512,
+    "balanced_accuracy": 0.596,
+    "f1": 0.565,
+    "brier": 0.236,
+    "confusion_matrix": [
+      [
+        9480,
+        8020
+      ],
+      [
+        4289,
+        7999
+      ]
+    ]
+  },
+  "unseen_pairs_test": {
+    "held_out_pairs": 30,
+    "test_rows": 21108,
+    "baseline_blosum_roc_auc": 0.599,
+    "selected_roc_auc": 0.642
+  },
+  "permutation_importance_top": [
+    {
+      "feature": "blosum62",
+      "drop_in_auc": 0.0779
+    },
+    {
+      "feature": "volume_ref",
+      "drop_in_auc": 0.0154
+    },
+    {
+      "feature": "hydro_ref",
+      "drop_in_auc": 0.0111
+    },
+    {
+      "feature": "volume_diff",
+      "drop_in_auc": 0.0081
+    },
+    {
+      "feature": "hydro_diff",
+      "drop_in_auc": 0.0063
+    },
+    {
+      "feature": "charge_ref",
+      "drop_in_auc": 0.0049
+    },
+    {
+      "feature": "abs_hydro_diff",
+      "drop_in_auc": 0.0044
+    },
+    {
+      "feature": "abs_volume_diff",
+      "drop_in_auc": 0.0042
+    }
+  ],
+  "notes": "Тест и кросс-валидация делятся по генам; признаки считаются только из пары аминокислот."
+}

@@ -1,20 +1,33 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
-from pymongo import MongoClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# .env лежит в корне проекта, на уровень выше папки backend
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(ENV_PATH)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-MONGODB_URI = os.getenv("MONGODB_URI")
-if not MONGODB_URI:
-    raise RuntimeError(f"MONGODB_URI не найден. Проверь файл: {ENV_PATH}")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL не найден в файле .env в корне проекта")
 
-client = MongoClient(MONGODB_URI)
-db = client[os.getenv("MONGODB_DB", "genetutor")]
+# Neon и Supabase дают ссылку вида postgresql://..., а драйвер psycopg 3 ждёт postgresql+psycopg://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
-users = db["users"]
-users.create_index("email", unique=True)
+# SQLite нужна только как запасной локальный вариант без интернета
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
-analyses = db["analyses"]
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+Base = declarative_base()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
