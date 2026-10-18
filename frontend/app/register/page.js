@@ -38,46 +38,63 @@ export default function Register() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
-        <h1 className="text-3xl font-bold">Регистрация</h1>
+    <main className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden px-6 py-12">
+      <div className="bg-aurora pointer-events-none absolute inset-0" />
 
-        <input
-          className="rounded border p-3 text-black"
-          placeholder="Имя"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-        <input
-          className="rounded border p-3 text-black"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className="rounded border p-3 text-black"
-          type="password"
-          placeholder="Пароль (от 6 символов)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+      <form onSubmit={handleSubmit} className="card relative flex w-full max-w-md flex-col gap-5 p-8 shadow-2xl shadow-emerald-500/5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Создать аккаунт</h1>
+          <p className="muted mt-1 text-sm">Это займёт меньше минуты.</p>
+        </div>
 
-        {error && <p className="text-red-600">{error}</p>}
+        <div className="flex flex-col gap-2">
+          <label className="label">Имя</label>
+          <input
+            className="input"
+            placeholder="Как к вам обращаться"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+        </div>
 
-        <button
-          disabled={loading}
-          className="rounded bg-green-600 p-3 text-white hover:bg-green-700 disabled:opacity-50"
-        >
-          {loading ? "Подождите..." : "Создать аккаунт"}
+        <div className="flex flex-col gap-2">
+          <label className="label">Email</label>
+          <input
+            className="input"
+            type="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="label">Пароль</label>
+          <input
+            className="input"
+            type="password"
+            placeholder="Не короче 6 символов"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
+
+        {error && (
+          <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            {error}
+          </p>
+        )}
+
+        <button disabled={loading} className="btn btn-primary">
+          {loading ? <span className="spinner" /> : "Создать аккаунт"}
         </button>
 
-        <p className="text-sm">
+        <p className="muted text-center text-sm">
           Уже есть аккаунт?{" "}
-          <Link href="/login" className="text-green-600 underline">
+          <Link href="/login" className="text-emerald-400 hover:underline">
             Войти
           </Link>
         </p>
