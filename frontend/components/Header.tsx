@@ -41,7 +41,7 @@ export default function Header() {
           </span>
         </Link>
 
-               <nav className="flex items-center gap-2">
+        <nav className="flex flex-wrap items-center justify-end gap-2">
           <Link href="/cases" className="btn btn-ghost btn-sm">
             Кейсы
           </Link>
@@ -50,11 +50,12 @@ export default function Header() {
               <Link href="/analyze" className="btn btn-ghost btn-sm">
                 Анализ
               </Link>
-
               <Link href="/agent" className="btn btn-ghost btn-sm">
                 Репетитор
               </Link>
-
+              <Link href="/profile" className="btn btn-ghost btn-sm">
+                Профиль
+              </Link>
               <button onClick={handleLogout} className="btn btn-ghost btn-sm">
                 Выйти
               </button>

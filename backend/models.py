@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -24,6 +24,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     analyses = relationship("Analysis", back_populates="user", cascade="all, delete-orphan")
+    attempts = relationship("TaskAttempt", back_populates="user", cascade="all, delete-orphan")
 
 
 class Analysis(Base):
@@ -35,3 +36,19 @@ class Analysis(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, index=True, nullable=False)
 
     user = relationship("User", back_populates="analyses")
+
+
+class TaskAttempt(Base):
+    """Одна попытка студента ответить на задание (для статистики и прогресса)."""
+
+    __tablename__ = "task_attempts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    topic = Column(String(80), nullable=False, default="Другое")
+    question = Column(Text, nullable=False)
+    student_answer = Column(Text, nullable=False)
+    verdict = Column(String(30), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True, nullable=False)
+
+    user = relationship("User", back_populates="attempts")

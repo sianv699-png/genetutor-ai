@@ -5,14 +5,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
-from models import User, Analysis
+from models import User, Analysis, TaskAttempt
 from auth import hash_password, verify_password, create_token, get_current_user
 from analysis import clean_sequence, validate, basic_stats, find_mutations
-from llm import explain_and_tasks, check_answer, LLMError
+from llm import explain_and_tasks, check_answer, LLMError, TOPICS
 from agent import run_agent
-from ml.predict import predict_missense
+from progress import build_progress
 
-# создаёт таблицы в базе, если их ещё нет
+try:
+    from ml.predict import predict_missense
+except ImportError:  # модель ещё не создана
+    def predict_missense(ref_aa, alt_aa):
+        return None
+
+# создаёт таблицы в базе, если их ещё нет (новые таблицы добавляются автоматически)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -51,6 +57,7 @@ class CheckIn(BaseModel):
     question: str
     reference_answer: str
     student_answer: str
+    topic: str = ""
 
 
 class AgentIn(BaseModel):
@@ -147,15 +154,45 @@ def explain(data: ExplainIn, user: User = Depends(get_current_user)):
 
 
 @app.post("/api/check")
-def check(data: CheckIn, user: User = Depends(get_current_user)):
+def check(
+    data: CheckIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if not data.student_answer.strip():
         raise HTTPException(status_code=400, detail="Введите ответ")
     try:
-        return check_answer(
+        verdict = check_answer(
             data.result, data.question, data.reference_answer, data.student_answer
         )
     except LLMError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+    # сохраняем попытку для профиля и прогресса
+    db.add(TaskAttempt(
+        user_id=user.id,
+        topic=data.topic if data.topic in TOPICS else "Другое",
+        question=data.question[:1000],
+        student_answer=data.student_answer[:2000],
+        verdict=verdict["verdict"],
+    ))
+    db.commit()
+    return verdict
+
+
+@app.get("/api/progress")
+def progress(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    attempts = (
+        db.query(TaskAttempt)
+        .filter(TaskAttempt.user_id == user.id)
+        .order_by(TaskAttempt.created_at.desc())
+        .limit(2000)
+        .all()
+    )
+    analysis_dates = [
+        row[0] for row in db.query(Analysis.created_at).filter(Analysis.user_id == user.id).all()
+    ]
+    return build_progress(user, attempts, analysis_dates)
 
 
 @app.post("/api/agent")

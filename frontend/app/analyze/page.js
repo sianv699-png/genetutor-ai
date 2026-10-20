@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { API_URL, getToken, logout } from "@/lib/api";
 
 const EXAMPLE_REF = "ATGGTGCACCTGACTCCTGAGGAGAAG";
@@ -179,6 +180,7 @@ export default function Analyze() {
           question: task.question,
           reference_answer: task.answer,
           student_answer: answers[i] || "",
+          topic: task.topic || "",
         }),
       });
       const data = await res.json();
@@ -444,6 +446,11 @@ export default function Analyze() {
                               {i + 1}
                             </span>
                             <div className="flex-1">
+                              {t.topic && (
+                                <span className="mb-2 inline-block rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs muted">
+                                  {t.topic}
+                                </span>
+                              )}
                               <p className="font-medium leading-6">{t.question}</p>
                               {t.hint && <p className="muted mt-1 text-sm">Подсказка: {t.hint}</p>}
 
@@ -484,6 +491,12 @@ export default function Analyze() {
                                 >
                                   <p className="font-semibold">{checks[i].verdict}</p>
                                   <p className="mt-1 leading-6">{checks[i].feedback}</p>
+                                  <p className="muted mt-2 text-xs">
+                                    Результат учтён в вашем{" "}
+                                    <Link href="/profile" className="text-emerald-400 underline">
+                                      профиле
+                                    </Link>
+                                  </p>
                                 </div>
                               )}
 
