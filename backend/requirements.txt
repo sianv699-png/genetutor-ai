@@ -7,3 +7,5 @@ bcrypt
 pyjwt
 pymongo[srv]
 google-genai
+torch
+biopython
