@@ -1,6 +1,7 @@
 import time
 
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +20,15 @@ from analysis import (
     validate,
     basic_stats,
     find_mutations,
+    compact_result,
+    decode_upload,
+    parse_fasta,
+    MAX_TEXT_LEN,
+    MAX_FILE_LEN,
+    MAX_FILE_BYTES,
+    MAX_MUTATIONS,
+    MAX_DIFF_SHARE,
+    MIN_LEN_FOR_DIFF_CHECK,
 )
 from llm import explain_and_tasks, check_answer, LLMError, TOPICS
 from agent import run_agent
@@ -156,22 +166,18 @@ def _ml_for_mutation(m: dict):
         return predict_missense(m.get("ref_aa"), m.get("alt_aa"))
 
 
-@app.post("/api/analyze")
-def analyze(
-    data: AnalyzeIn,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    seq = clean_sequence(data.sequence)
-    error = validate(seq)
+def run_analysis(seq: str, ref: str, max_len: int) -> dict:
+    """Общий анализ для текста и файлов. seq и ref уже очищены, ref может быть пустым.
+
+    Ошибки возвращаются пользователю как HTTPException с понятным текстом."""
+    error = validate(seq, max_len)
     if error:
         raise HTTPException(status_code=400, detail=error)
 
     result = {"sequence": seq, "stats": basic_stats(seq), "mutations": None}
 
-    if data.reference.strip():
-        ref = clean_sequence(data.reference)
-        error = validate(ref)
+    if ref:
+        error = validate(ref, max_len)
         if error:
             raise HTTPException(status_code=400, detail="Эталон: " + error)
         if len(ref) != len(seq):
@@ -179,12 +185,86 @@ def analyze(
                 status_code=400,
                 detail=f"Длины различаются ({len(ref)} и {len(seq)}). Пока поддерживается сравнение одинаковой длины.",
             )
+        mutations = find_mutations(ref, seq)
+        if len(seq) >= MIN_LEN_FOR_DIFF_CHECK and len(mutations) > MAX_DIFF_SHARE * len(seq):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Последовательности отличаются в {len(mutations)} позициях из {len(seq)}. "
+                    "Похоже, это разные гены или участки: проверьте, что эталон соответствует образцу."
+                ),
+            )
         result["reference"] = ref
-        result["mutations"] = find_mutations(ref, seq)
+        result["mutations_total"] = len(mutations)
+        result["mutations"] = mutations[:MAX_MUTATIONS]
         for m in result["mutations"]:
             pred = _ml_for_mutation(m)
             if pred:
                 m["ml"] = pred
+
+    return compact_result(result)
+
+
+@app.post("/api/analyze")
+def analyze(
+    data: AnalyzeIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    seq = clean_sequence(data.sequence)
+    ref = clean_sequence(data.reference) if data.reference.strip() else ""
+    result = run_analysis(seq, ref, MAX_TEXT_LEN)
+
+    db.add(Analysis(user_id=user.id, result=result))
+    db.commit()
+    return result
+
+
+# ---------- анализ файлов FASTA ----------
+
+async def _read_upload(f: UploadFile, label: str):
+    """Читает загруженный файл с проверкой размера и разбирает FASTA."""
+    data = await f.read(MAX_FILE_BYTES + 1)
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label}: файл больше {MAX_FILE_BYTES // 1_000_000} МБ.",
+        )
+    seq, info = parse_fasta(decode_upload(data))
+    if not seq:
+        raise HTTPException(status_code=400, detail=f"{label}: в файле не найдена последовательность.")
+    info["filename"] = (f.filename or "")[:200]
+    return seq, info
+
+
+@app.post("/api/analyze/file")
+async def analyze_file(
+    sequence_file: UploadFile | None = File(None),
+    sequence_text: str = Form(""),
+    reference_file: UploadFile | None = File(None),
+    reference_text: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Анализ с загрузкой файлов. Образец и эталон можно передать файлом или текстом."""
+    source = {}
+
+    if sequence_file is not None and sequence_file.filename:
+        seq, source["sequence"] = await _read_upload(sequence_file, "Образец")
+    else:
+        seq = clean_sequence(sequence_text)
+
+    if reference_file is not None and reference_file.filename:
+        ref, source["reference"] = await _read_upload(reference_file, "Эталон")
+    elif reference_text.strip():
+        ref = clean_sequence(reference_text)
+    else:
+        ref = ""
+
+    # анализ длинной последовательности выполняем в отдельном потоке, чтобы не блокировать сервер
+    result = await run_in_threadpool(run_analysis, seq, ref, MAX_FILE_LEN)
+    if source:
+        result["source"] = source
 
     db.add(Analysis(user_id=user.id, result=result))
     db.commit()
@@ -220,35 +300,13 @@ def guest_analyze(data: AnalyzeIn, request: Request):
         )
 
     seq = clean_sequence(data.sequence)
-    error = validate(seq)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
     if len(seq) > GUEST_MAX_LENGTH:
         raise HTTPException(
             status_code=400,
             detail=f"В гостевом режиме максимум {GUEST_MAX_LENGTH} нуклеотидов. Создайте аккаунт для длинных последовательностей.",
         )
-
-    result = {"sequence": seq, "stats": basic_stats(seq), "mutations": None}
-
-    if data.reference.strip():
-        ref = clean_sequence(data.reference)
-        error = validate(ref)
-        if error:
-            raise HTTPException(status_code=400, detail="Эталон: " + error)
-        if len(ref) != len(seq):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Длины различаются ({len(ref)} и {len(seq)}). Пока поддерживается сравнение одинаковой длины.",
-            )
-        result["reference"] = ref
-        result["mutations"] = find_mutations(ref, seq)
-        for m in result["mutations"]:
-            pred = _ml_for_mutation(m)
-            if pred:
-                m["ml"] = pred
-
-    return result
+    ref = clean_sequence(data.reference) if data.reference.strip() else ""
+    return run_analysis(seq, ref, GUEST_MAX_LENGTH)
 
 
 # ---------- объяснение ML-оценки ----------

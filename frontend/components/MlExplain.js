@@ -116,6 +116,8 @@ export default function MlExplain({ m, onClose }) {
     };
   }, [m.ref_aa, m.alt_aa, m.ref, m.alt, m.position]);
 
+  const isNeural = data?.model === "neural_network";
+  const modelName = isNeural ? "нейросети GeneTutor" : "модели";
   const strong = data ? data.factors.filter((f) => Math.abs(f.impact) >= 0.03) : [];
   const up = strong.filter((f) => f.impact > 0).map((f) => TITLES[f.key].toLowerCase());
   const down = strong.filter((f) => f.impact < 0).map((f) => TITLES[f.key].toLowerCase());
@@ -127,7 +129,7 @@ export default function MlExplain({ m, onClose }) {
           <p className="font-bold">
             Почему такая оценка: {m.ref_aa} → {m.alt_aa}
           </p>
-          <p className="muted mt-1 text-xs">Какие свойства замены сдвинули оценку модели</p>
+          <p className="muted mt-1 text-xs">Какие свойства замены сдвинули оценку {modelName}</p>
         </div>
         {onClose && (
           <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">
@@ -145,9 +147,14 @@ export default function MlExplain({ m, onClose }) {
 
       {data && (
         <div className="mt-4 min-w-0">
+          {isNeural && (
+            <p className="muted mb-3 text-xs leading-5">
+              Оценку дала собственная нейросеть GeneTutor, обученная командой на мутациях из базы ClinVar.
+            </p>
+          )}
           <p className="text-sm leading-6">
-            Оценка модели: <span className="font-bold">{Math.round(data.probability * 100)}%</span>
-            {" "}({data.label}). Для типичной замены модель дала бы около{" "}
+            Оценка {modelName}: <span className="font-bold">{Math.round(data.probability * 100)}%</span>
+            {" "}({data.label}). Для типичной замены {isNeural ? "нейросеть дала бы" : "модель дала бы"} около{" "}
             <span className="font-bold">{Math.round(data.typical_probability * 100)}%</span>.{" "}
             {strong.length === 0
               ? "Ни одно свойство по отдельности не сдвигает оценку заметно."

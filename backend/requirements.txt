@@ -9,3 +9,5 @@ pymongo[srv]
 google-genai
 torch
 biopython
+
+python-multipart

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import joblib
+import numpy as np
 import torch
 
 from .features import variant_features
@@ -35,3 +36,11 @@ def predict_nn(ref: str, alt: str, protein_pos=None) -> float:
     x = m["scaler"].transform([variant_features(ref, alt, pos)])
     with torch.no_grad():
         return torch.sigmoid(m["net"](torch.tensor(x, dtype=torch.float32))).item()
+
+
+def predict_nn_batch(rows) -> np.ndarray:
+    """Вероятности сразу для нескольких векторов признаков (нужно для объяснения оценки)."""
+    m = _load()
+    x = m["scaler"].transform(np.asarray(rows, dtype=float))
+    with torch.no_grad():
+        return torch.sigmoid(m["net"](torch.tensor(x, dtype=torch.float32))).numpy().ravel()

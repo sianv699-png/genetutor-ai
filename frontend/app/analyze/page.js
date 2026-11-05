@@ -12,12 +12,84 @@ import MlExplain from "@/components/MlExplain";
 const EXAMPLE_REF = "ATGGTGCACCTGACTCCTGAGGAGAAG";
 const EXAMPLE_SAMPLE = "ATGGTGCACCTGACTCCTGTGGAGAAG";
 
+const MAX_FILE_BYTES = 2_000_000; // должно совпадать с MAX_FILE_BYTES в backend/analysis.py
+const FILE_ACCEPT = ".fa,.fasta,.fna,.ffn,.fas,.seq,.txt,text/plain";
+
+const fmtNum = (n) => Number(n).toLocaleString("ru-RU");
+
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
+
+function FilePicker({ id, file, onChange, onError }) {
+  function handle(e) {
+    const f = e.target.files?.[0] || null;
+    e.target.value = ""; // чтобы можно было выбрать тот же файл повторно
+    if (!f) return;
+    if (f.size > MAX_FILE_BYTES) {
+      onError(`Файл ${f.name} больше ${MAX_FILE_BYTES / 1_000_000} МБ.`);
+      return;
+    }
+    onError("");
+    onChange(f);
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <label htmlFor={id} className="btn btn-ghost btn-sm cursor-pointer">
+        {file ? "Заменить файл" : "Загрузить файл"}
+      </label>
+      <input id={id} type="file" accept={FILE_ACCEPT} className="sr-only" onChange={handle} />
+      {file && (
+        <span className="badge b-lav inline-flex min-w-0 max-w-full items-center gap-2">
+          <span className="truncate">
+            {file.name}, {formatSize(file.size)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="font-bold leading-none"
+            aria-label={`Убрать файл ${file.name}`}
+          >
+            ×
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SourceNote({ source }) {
+  const rows = [
+    ["Образец", source.sequence],
+    ["Эталон", source.reference],
+  ].filter(([, info]) => info);
+  if (!rows.length) return null;
+  return (
+    <div className="card min-w-0 p-4 text-sm leading-6">
+      {rows.map(([label, info]) => (
+        <p key={label} className="min-w-0 break-words">
+          <span className="font-semibold">{label}:</span> файл {info.filename}
+          {info.header && <span className="muted"> ({info.header})</span>}
+          {info.records > 1 && (
+            <span className="muted">. В файле {info.records} записей, для анализа взята первая.</span>
+          )}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export default function Analyze() {
   const router = useRouter();
   const [user, setUser] = useState(null);
 
   const [sequence, setSequence] = useState("");
   const [reference, setReference] = useState("");
+  const [seqFile, setSeqFile] = useState(null);
+  const [refFile, setRefFile] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [explainFor, setExplainFor] = useState(null);
@@ -45,6 +117,8 @@ export default function Analyze() {
         const p = JSON.parse(raw);
         setSequence(p.sequence || "");
         setReference(p.reference || "");
+        setSeqFile(null);
+        setRefFile(null);
         setCaseRef(
           p.caseId
             ? { id: p.caseId, sequence: p.sequence, reference: p.reference, tier: p.tier }
@@ -95,15 +169,31 @@ export default function Analyze() {
     setAiError("");
     resetTasks();
     setLoading(true);
+    const useFiles = Boolean(seqFile || refFile);
     try {
-      const res = await fetch(`${API_URL}/api/analyze`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({ sequence, reference }),
-      });
+      let res;
+      if (useFiles) {
+        // образец и эталон можно передать файлом или текстом, в любом сочетании
+        const form = new FormData();
+        if (seqFile) form.append("sequence_file", seqFile);
+        else form.append("sequence_text", sequence);
+        if (refFile) form.append("reference_file", refFile);
+        else form.append("reference_text", reference);
+        res = await fetch(`${API_URL}/api/analyze/file`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${getToken()}` },
+          body: form,
+        });
+      } else {
+        res = await fetch(`${API_URL}/api/analyze`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({ sequence, reference }),
+        });
+      }
       const data = await res.json();
       if (res.status === 401) {
         logout();
@@ -111,12 +201,15 @@ export default function Analyze() {
         return;
       }
       if (!res.ok) {
-        setError(data.detail || "Ошибка анализа");
+        setError(typeof data.detail === "string" ? data.detail : "Ошибка анализа");
         return;
       }
       setResult(data);
       setResultCaseId(
-        caseRef && sequence.trim() === caseRef.sequence && reference.trim() === caseRef.reference
+        !useFiles &&
+          caseRef &&
+          sequence.trim() === caseRef.sequence &&
+          reference.trim() === caseRef.reference
           ? caseRef.id
           : ""
       );
@@ -130,6 +223,8 @@ export default function Analyze() {
   function fillExample() {
     setReference(EXAMPLE_REF);
     setSequence(EXAMPLE_SAMPLE);
+    setSeqFile(null);
+    setRefFile(null);
     setCaseRef(null);
   }
 
@@ -213,6 +308,7 @@ export default function Analyze() {
 
   const mutatedPositions = new Set((result?.mutations || []).map((m) => m.position));
   const hasMl = (result?.mutations || []).some((m) => m.ml);
+  const mutationsTotal = result?.mutations_total ?? result?.mutations?.length ?? 0;
 
   return (
     <main className="w-full min-w-0">
@@ -222,8 +318,8 @@ export default function Analyze() {
           Анализ последовательности
         </h1>
         <p className="muted mt-4 max-w-2xl leading-7">
-          {user.name}, вставьте последовательность ДНК. Чтобы найти мутации, добавьте эталон той же
-          длины.
+          {user.name}, вставьте последовательность ДНК или загрузите FASTA-файл. Чтобы найти мутации,
+          добавьте эталон той же длины.
         </p>
 
         {/* ввод */}
@@ -235,12 +331,16 @@ export default function Analyze() {
               </label>
               <textarea
                 id="seq"
-                className="input mono h-40 resize-y text-sm"
-                placeholder="ATGGTGCACCTGACT..."
-                value={sequence}
+                className="input mono h-40 resize-y text-sm disabled:opacity-50"
+                placeholder={seqFile ? "Используется загруженный файл" : "ATGGTGCACCTGACT..."}
+                value={seqFile ? "" : sequence}
+                disabled={Boolean(seqFile)}
                 onChange={(e) => setSequence(e.target.value)}
               />
-              <p className="muted text-xs">Символы A, T, G, C. Можно вставить FASTA.</p>
+              <FilePicker id="seq-file" file={seqFile} onChange={setSeqFile} onError={setError} />
+              <p className="muted text-xs">
+                Символы A, T, G, C. Можно вставить FASTA или загрузить файл до 2 МБ (.fasta, .fa, .txt).
+              </p>
             </div>
 
             <div className="flex min-w-0 flex-col gap-2">
@@ -249,11 +349,13 @@ export default function Analyze() {
               </label>
               <textarea
                 id="ref"
-                className="input mono h-40 resize-y text-sm"
-                placeholder="Нормальная последовательность той же длины"
-                value={reference}
+                className="input mono h-40 resize-y text-sm disabled:opacity-50"
+                placeholder={refFile ? "Используется загруженный файл" : "Нормальная последовательность той же длины"}
+                value={refFile ? "" : reference}
+                disabled={Boolean(refFile)}
                 onChange={(e) => setReference(e.target.value)}
               />
+              <FilePicker id="ref-file" file={refFile} onChange={setRefFile} onError={setError} />
               <p className="muted text-xs">Нужен для поиска мутаций.</p>
             </div>
           </div>
@@ -263,7 +365,7 @@ export default function Analyze() {
           <div className="mt-6 flex flex-wrap gap-3">
             <button
               onClick={handleAnalyze}
-              disabled={loading || !sequence.trim()}
+              disabled={loading || (!sequence.trim() && !seqFile)}
               className="btn btn-primary"
             >
               {loading ? <span className="spinner" /> : "Анализировать"}
@@ -284,12 +386,14 @@ export default function Analyze() {
               <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Что получилось</h2>
             </div>
 
+            {result.source && <SourceNote source={result.source} />}
+
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                ["Длина", `${result.stats.length} нт`],
+                ["Длина", `${fmtNum(result.stats.length)} нт`],
                 ["GC-состав", `${result.stats.gc_percent}%`],
-                ["A / T", `${result.stats.counts.A} / ${result.stats.counts.T}`],
-                ["G / C", `${result.stats.counts.G} / ${result.stats.counts.C}`],
+                ["A / T", `${fmtNum(result.stats.counts.A)} / ${fmtNum(result.stats.counts.T)}`],
+                ["G / C", `${fmtNum(result.stats.counts.G)} / ${fmtNum(result.stats.counts.C)}`],
               ].map(([label, value]) => (
                 <div key={label} className="card min-w-0 p-4">
                   <p className="text-xl font-bold sm:text-2xl">{value}</p>
@@ -320,17 +424,32 @@ export default function Analyze() {
                     {nt}
                   </span>
                 ))}
+                {result.truncated && <span className="text-white/50"> …</span>}
               </p>
             </div>
+
+            {result.truncated && (
+              <p className="muted -mt-3 text-xs leading-5">
+                Последовательность длинная: здесь показаны первые {fmtNum(result.sequence.length)}{" "}
+                нуклеотидов из {fmtNum(result.stats.length)}. Длина, состав и мутации посчитаны по всей
+                последовательности, полный список мутаций в таблице ниже.
+              </p>
+            )}
 
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <div className="card min-w-0 p-5">
                 <p className="label">РНК (транскрипция)</p>
-                <p className="mono mt-3 break-all text-sm leading-7">{result.stats.rna}</p>
+                <p className="mono mt-3 break-all text-sm leading-7">
+                  {result.stats.rna}
+                  {result.truncated && " …"}
+                </p>
               </div>
               <div className="card min-w-0 p-5">
                 <p className="label">Белок (трансляция)</p>
-                <p className="mono mt-3 break-all text-sm leading-7">{result.stats.protein}</p>
+                <p className="mono mt-3 break-all text-sm leading-7">
+                  {result.stats.protein}
+                  {result.truncated && " …"}
+                </p>
               </div>
             </div>
 
@@ -338,7 +457,7 @@ export default function Analyze() {
               <div className="card min-w-0 overflow-hidden">
                 <div className="rule-b flex items-center justify-between px-5 py-4">
                   <h3 className="font-bold">Найденные мутации</h3>
-                  <span className="badge b-lav">{result.mutations.length}</span>
+                  <span className="badge b-lav">{fmtNum(mutationsTotal)}</span>
                 </div>
 
                 {result.mutations.length === 0 ? (
@@ -379,7 +498,7 @@ export default function Analyze() {
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span
                                       className={mlBadge(m.ml.label)}
-                                      title={`Оценка модели: ${Math.round(m.ml.probability * 100)}%`}
+                                      title={`Оценка нейросети: ${Math.round(m.ml.probability * 100)}%`}
                                     >
                                       {m.ml.label}
                                     </span>
@@ -403,6 +522,11 @@ export default function Analyze() {
                         </tbody>
                       </table>
                     </div>
+                    {mutationsTotal > result.mutations.length && (
+                      <p className="muted rule-t px-5 py-3 text-xs leading-5">
+                        Показаны первые {fmtNum(result.mutations.length)} мутаций из {fmtNum(mutationsTotal)}.
+                      </p>
+                    )}
                     {hasMl && <p className="muted rule-t px-5 py-3 text-xs leading-5">{ML_NOTE}</p>}
                     {explainFor && result.mutations.find((x) => x.position === explainFor) && (
                       <div className="rule-t p-4 sm:p-5">

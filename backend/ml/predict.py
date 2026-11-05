@@ -8,10 +8,11 @@ from .features import AA, features
 USE_NEURAL_NET = True
 
 try:
-    from .nn.predictor import predict_nn
+    from .nn.predictor import predict_nn, predict_nn_batch
 except Exception as e:  # torch не установлен или папка nn недоступна
     print("Нейросеть не подключена, используется старая модель:", e)
     predict_nn = None
+    predict_nn_batch = None
 
 MODEL_PATH = Path(__file__).resolve().parent / "variant_model.joblib"
 _bundle = {}

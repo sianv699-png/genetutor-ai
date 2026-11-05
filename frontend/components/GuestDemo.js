@@ -197,7 +197,7 @@ export default function GuestDemo() {
                     {m.ml && (
                       <span
                         className={mlBadge(m.ml.label)}
-                        title={`Оценка модели: ${Math.round(m.ml.probability * 100)}%`}
+                          title={`Оценка нейросети: ${Math.round(m.ml.probability * 100)}%`}
                       >
                         ML: {m.ml.label}
                       </span>
@@ -239,7 +239,7 @@ export default function GuestDemo() {
             </div>
 
             <p className="muted mt-4 text-xs leading-5">
-              ML-ориентир — оценка учебной модели, не диагноз.
+                           ML-ориентир — оценка собственной нейросети GeneTutor, не диагноз.
             </p>
           </div>
         )}
