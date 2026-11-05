@@ -1,8 +1,18 @@
-from Bio.Align import substitution_matrices
+"""Признаки замены аминокислоты для оценки патогенности.
 
-BLOSUM62 = substitution_matrices.load("BLOSUM62")
+Три набора признаков (каждый следующий включает предыдущий):
+  base      19 признаков: BLOSUM62, гидрофобность, объём, заряд и особые замены;
+  extended  + 9 матриц замен, 4 шкалы свойств аминокислот, классы аминокислот;
+  full      + контекст нуклеотидной замены: позиция в кодоне и тип замены.
+"""
+from functools import lru_cache
+
+from Bio.Align import substitution_matrices
+from Bio.SeqUtils import ProtParamData
 
 AA = "ACDEFGHIKLMNPQRSTVWY"
+
+BLOSUM62 = substitution_matrices.load("BLOSUM62")
 
 # гидрофобность по шкале Кайта-Дулитла
 HYDRO = {
@@ -24,7 +34,25 @@ CHARGE = {"D": -1, "E": -1, "K": 1, "R": 1}
 
 AROMATIC = set("FWY")
 
-FEATURE_NAMES = [
+# дополнительные матрицы замен из Biopython (физико-химические и структурные)
+EXTRA_MATRICES = ["PAM250", "GONNET1992", "JOHNSON", "RISLER", "MCLACHLAN", "LEVIN", "STR", "BENNER74", "GENETIC"]
+_MATRICES = {name: substitution_matrices.load(name) for name in EXTRA_MATRICES}
+
+# дополнительные шкалы свойств аминокислот (Biopython ProtParamData)
+SCALES = {
+    "hopp_woods": ProtParamData.hw,    # гидрофильность
+    "flexibility": ProtParamData.Flex,  # гибкость
+    "surface": ProtParamData.em,        # доступность поверхности (Emini)
+    "janin": ProtParamData.ja,          # склонность к погружению в белок
+}
+
+# классы аминокислот: 0 алифатические, 1 ароматические, 2 полярные, 3 положительные, 4 отрицательные, 5 особые
+AA_CLASS = {}
+for _cls, _letters in enumerate(["AVLIMC", "FWY", "STNQ", "KRH", "DE", "GP"]):
+    for _a in _letters:
+        AA_CLASS[_a] = _cls
+
+BASE_NAMES = [
     "blosum62",
     "hydro_ref", "hydro_alt", "hydro_diff", "abs_hydro_diff",
     "volume_ref", "volume_alt", "volume_diff", "abs_volume_diff",
@@ -33,13 +61,32 @@ FEATURE_NAMES = [
     "to_pro", "from_pro", "to_gly", "from_gly", "to_cys", "from_cys",
 ]
 
+EXT_NAMES = (
+    [f"mx_{name.lower()}" for name in EXTRA_MATRICES]
+    + [f"{s}_{part}" for s in SCALES for part in ("ref", "alt", "diff")]
+    + ["class_ref", "class_alt", "class_change"]
+)
 
-def pair_features(ref: str, alt: str) -> list:
-    """Признаки замены аминокислоты ref -> alt (однобуквенные коды)."""
+NT_PAIRS = [(a, b) for a in "ACGT" for b in "ACGT" if a != b]
+NT_NAMES = ["codon_pos", "is_transition", "nt_change"]
+
+FEATURE_GROUPS = {
+    "base": BASE_NAMES,
+    "extended": BASE_NAMES + EXT_NAMES,
+    "full": BASE_NAMES + EXT_NAMES + NT_NAMES,
+}
+
+# для совместимости со старым кодом
+FEATURE_NAMES = BASE_NAMES
+
+
+@lru_cache(maxsize=None)
+def _pair_all(ref: str, alt: str) -> tuple:
+    """Признаки base + extended для пары аминокислот (кешируются: пар всего 380)."""
     hr, ha = HYDRO[ref], HYDRO[alt]
     vr, va = VOLUME[ref], VOLUME[alt]
     cr, ca = CHARGE.get(ref, 0), CHARGE.get(alt, 0)
-    return [
+    base = [
         float(BLOSUM62[ref][alt]),
         hr, ha, ha - hr, abs(ha - hr),
         vr, va, va - vr, abs(va - vr),
@@ -49,3 +96,37 @@ def pair_features(ref: str, alt: str) -> list:
         float(alt == "G"), float(ref == "G"),
         float(alt == "C"), float(ref == "C"),
     ]
+    ext = [float(_MATRICES[name][ref][alt]) for name in EXTRA_MATRICES]
+    for scale in SCALES.values():
+        ext += [float(scale[ref]), float(scale[alt]), float(scale[alt] - scale[ref])]
+    ext += [float(AA_CLASS[ref]), float(AA_CLASS[alt]), float(AA_CLASS[ref] != AA_CLASS[alt])]
+    return tuple(base + ext)
+
+
+def _nt_features(nt_ref, nt_alt, codon_pos) -> list:
+    """Контекст нуклеотидной замены; если данных нет, возвращает пропуски (NaN)."""
+    nan = float("nan")
+    try:
+        pair_id = NT_PAIRS.index((nt_ref, nt_alt))
+        pos = int(codon_pos)
+        if pos not in (1, 2, 3):
+            raise ValueError
+    except (ValueError, TypeError):
+        return [nan, nan, nan]
+    transition = {nt_ref, nt_alt} in ({"A", "G"}, {"C", "T"})
+    return [float(pos), float(transition), float(pair_id)]
+
+
+def features(ref, alt, group="extended", nt_ref=None, nt_alt=None, codon_pos=None) -> list:
+    """Вектор признаков заданного набора (base, extended или full)."""
+    values = list(_pair_all(ref, alt))
+    if group == "base":
+        return values[: len(BASE_NAMES)]
+    if group == "extended":
+        return values
+    return values + _nt_features(nt_ref, nt_alt, codon_pos)
+
+
+def pair_features(ref: str, alt: str) -> list:
+    """Базовые 19 признаков (оставлено для совместимости)."""
+    return features(ref, alt, "base")

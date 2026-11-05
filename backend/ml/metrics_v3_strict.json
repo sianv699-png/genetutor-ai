@@ -1,0 +1,216 @@
+{
+  "options": {
+    "max_per_gene": 300,
+    "max_per_pair": 3000,
+    "strict_labels": true,
+    "min_review": "any"
+  },
+  "data_before_limits": {
+    "rows": 39645,
+    "distinct_pairs": 150,
+    "share_top5_pairs": 0.145,
+    "distinct_genes": 7393,
+    "share_top5_genes": 0.051
+  },
+  "data_after_limits": {
+    "rows": 39131,
+    "distinct_pairs": 150,
+    "share_top5_pairs": 0.146,
+    "distinct_genes": 7393,
+    "share_top5_genes": 0.039
+  },
+  "class_counts": {
+    "pathogenic": 14751,
+    "benign": 24380
+  },
+  "ablation_cv_by_gene": [
+    {
+      "features": "base",
+      "model": "logreg",
+      "n_features": 19,
+      "cv_mean": 0.731,
+      "cv_std": 0.012
+    },
+    {
+      "features": "base",
+      "model": "boost_d3_n150",
+      "n_features": 19,
+      "cv_mean": 0.737,
+      "cv_std": 0.012
+    },
+    {
+      "features": "base",
+      "model": "boost_d4_n300",
+      "n_features": 19,
+      "cv_mean": 0.738,
+      "cv_std": 0.013
+    },
+    {
+      "features": "extended",
+      "model": "logreg",
+      "n_features": 43,
+      "cv_mean": 0.732,
+      "cv_std": 0.013
+    },
+    {
+      "features": "extended",
+      "model": "boost_d3_n150",
+      "n_features": 43,
+      "cv_mean": 0.737,
+      "cv_std": 0.012
+    },
+    {
+      "features": "extended",
+      "model": "boost_d4_n300",
+      "n_features": 43,
+      "cv_mean": 0.738,
+      "cv_std": 0.013
+    },
+    {
+      "features": "full",
+      "model": "logreg",
+      "n_features": 46,
+      "cv_mean": 0.735,
+      "cv_std": 0.012
+    },
+    {
+      "features": "full",
+      "model": "boost_d3_n150",
+      "n_features": 46,
+      "cv_mean": 0.738,
+      "cv_std": 0.012
+    },
+    {
+      "features": "full",
+      "model": "boost_d4_n300",
+      "n_features": 46,
+      "cv_mean": 0.739,
+      "cv_std": 0.014
+    }
+  ],
+  "selected": {
+    "features": "base",
+    "model": "boost_d3_n150"
+  },
+  "deployed_models": {
+    "with_nucleotide_context": [
+      "base",
+      "boost_d3_n150"
+    ],
+    "amino_acids_only": [
+      "base",
+      "boost_d3_n150"
+    ]
+  },
+  "train_roc_auc": 0.744,
+  "overfit_gap": 0.011,
+  "test_metrics_new_genes": {
+    "roc_auc": 0.733,
+    "pr_auc": 0.627,
+    "balanced_accuracy": 0.676,
+    "f1": 0.605,
+    "brier": 0.208,
+    "confusion_matrix": [
+      [
+        4416,
+        1772
+      ],
+      [
+        1364,
+        2406
+      ]
+    ],
+    "roc_auc_ci95": [
+      0.703,
+      0.766
+    ]
+  },
+  "previous_version_test": {
+    "roc_auc": 0.733,
+    "pr_auc": 0.627,
+    "balanced_accuracy": 0.676,
+    "f1": 0.605,
+    "brier": 0.208,
+    "confusion_matrix": [
+      [
+        4416,
+        1772
+      ],
+      [
+        1364,
+        2406
+      ]
+    ],
+    "roc_auc_ci95": [
+      0.703,
+      0.766
+    ]
+  },
+  "baseline_blosum_test": {
+    "roc_auc": 0.678,
+    "pr_auc": 0.517,
+    "balanced_accuracy": 0.643,
+    "f1": 0.583,
+    "brier": 0.226,
+    "confusion_matrix": [
+      [
+        3779,
+        2409
+      ],
+      [
+        1227,
+        2543
+      ]
+    ]
+  },
+  "unseen_pairs_test": {
+    "held_out_pairs": 30,
+    "test_rows": 7351,
+    "blosum_only_roc_auc": 0.626,
+    "previous_version_roc_auc": 0.686,
+    "selected_roc_auc": 0.686
+  },
+  "permutation_importance_top": [
+    {
+      "feature": "blosum62",
+      "drop_in_auc": 0.0658
+    },
+    {
+      "feature": "volume_ref",
+      "drop_in_auc": 0.0149
+    },
+    {
+      "feature": "hydro_ref",
+      "drop_in_auc": 0.0091
+    },
+    {
+      "feature": "abs_volume_diff",
+      "drop_in_auc": 0.0069
+    },
+    {
+      "feature": "from_cys",
+      "drop_in_auc": 0.0059
+    },
+    {
+      "feature": "charge_change",
+      "drop_in_auc": 0.0045
+    },
+    {
+      "feature": "abs_hydro_diff",
+      "drop_in_auc": 0.0041
+    },
+    {
+      "feature": "aromatic_change",
+      "drop_in_auc": 0.0039
+    },
+    {
+      "feature": "from_pro",
+      "drop_in_auc": 0.0015
+    },
+    {
+      "feature": "to_pro",
+      "drop_in_auc": 0.001
+    }
+  ],
+  "notes": "Тест и кросс-валидация делятся по генам, ограничения применяются до разбиения."
+}
