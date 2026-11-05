@@ -1,32 +1,16 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_URL, getToken, logout } from "@/lib/api";
+import { effectBadge, mlBadge, verdictBox, ML_NOTE } from "@/lib/ui";
+import MlExplain from "@/components/MlExplain";
 
 const EXAMPLE_REF = "ATGGTGCACCTGACTCCTGAGGAGAAG";
 const EXAMPLE_SAMPLE = "ATGGTGCACCTGACTCCTGTGGAGAAG";
-
-function effectClass(effect = "") {
-  if (effect.startsWith("синоним")) return "border-sky-500/30 bg-sky-500/15 text-sky-300";
-  if (effect.startsWith("нонсенс") || effect.startsWith("потеря"))
-    return "border-red-500/30 bg-red-500/15 text-red-300";
-  if (effect.startsWith("миссенс")) return "border-amber-500/30 bg-amber-500/15 text-amber-300";
-  return "border-white/10 bg-white/5 text-slate-300";
-}
-
-function mlClass(label = "") {
-  if (label.includes("патоген")) return "border-red-500/30 bg-red-500/15 text-red-300";
-  if (label.includes("нейтраль")) return "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
-  return "border-white/10 bg-white/5 text-slate-300";
-}
-
-function verdictClass(verdict = "") {
-  if (verdict.startsWith("неверно")) return "border-red-500/30 bg-red-500/10 text-red-200";
-  if (verdict.startsWith("частично")) return "border-amber-500/30 bg-amber-500/10 text-amber-200";
-  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-}
 
 export default function Analyze() {
   const router = useRouter();
@@ -36,6 +20,7 @@ export default function Analyze() {
   const [reference, setReference] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [explainFor, setExplainFor] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const [ai, setAi] = useState(null);
@@ -48,6 +33,10 @@ export default function Analyze() {
   const [checking, setChecking] = useState({});
   const [checkErrors, setCheckErrors] = useState({});
 
+  // кейс, из которого пришли (для баллов и уровней)
+  const [caseRef, setCaseRef] = useState(null);
+  const [resultCaseId, setResultCaseId] = useState("");
+
   // подстановка кейса со страницы /cases
   useEffect(() => {
     try {
@@ -56,9 +45,14 @@ export default function Analyze() {
         const p = JSON.parse(raw);
         setSequence(p.sequence || "");
         setReference(p.reference || "");
+        setCaseRef(
+          p.caseId
+            ? { id: p.caseId, sequence: p.sequence, reference: p.reference, tier: p.tier }
+            : null
+        );
         sessionStorage.removeItem("prefill");
       }
-    } catch (e) {}
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -78,7 +72,7 @@ export default function Analyze() {
           return;
         }
         setUser(await res.json());
-      } catch (err) {
+      } catch {
         router.push("/login");
       }
     }
@@ -95,6 +89,7 @@ export default function Analyze() {
 
   async function handleAnalyze() {
     setError("");
+    setExplainFor(null);
     setResult(null);
     setAi(null);
     setAiError("");
@@ -120,7 +115,12 @@ export default function Analyze() {
         return;
       }
       setResult(data);
-    } catch (err) {
+      setResultCaseId(
+        caseRef && sequence.trim() === caseRef.sequence && reference.trim() === caseRef.reference
+          ? caseRef.id
+          : ""
+      );
+    } catch {
       setError("Не удалось связаться с сервером. Запущен ли бэкенд?");
     } finally {
       setLoading(false);
@@ -130,6 +130,7 @@ export default function Analyze() {
   function fillExample() {
     setReference(EXAMPLE_REF);
     setSequence(EXAMPLE_SAMPLE);
+    setCaseRef(null);
   }
 
   async function handleExplain() {
@@ -144,7 +145,7 @@ export default function Analyze() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ result }),
+        body: JSON.stringify({ result, tier: caseRef ? caseRef.tier || 0 : 0 }),
       });
       const data = await res.json();
       if (res.status === 401) {
@@ -157,7 +158,7 @@ export default function Analyze() {
         return;
       }
       setAi(data);
-    } catch (err) {
+    } catch {
       setAiError("Не удалось связаться с сервером.");
     } finally {
       setAiLoading(false);
@@ -181,6 +182,7 @@ export default function Analyze() {
           reference_answer: task.answer,
           student_answer: answers[i] || "",
           topic: task.topic || "",
+          case_id: resultCaseId,
         }),
       });
       const data = await res.json();
@@ -194,7 +196,7 @@ export default function Analyze() {
         return;
       }
       setChecks((p) => ({ ...p, [i]: data }));
-    } catch (err) {
+    } catch {
       setCheckErrors((p) => ({ ...p, [i]: "Не удалось связаться с сервером." }));
     } finally {
       setChecking((p) => ({ ...p, [i]: false }));
@@ -213,24 +215,27 @@ export default function Analyze() {
   const hasMl = (result?.mutations || []).some((m) => m.ml);
 
   return (
-    <main className="relative">
-      <div className="bg-aurora pointer-events-none absolute inset-x-0 top-0 h-[28rem]" />
+    <main className="w-full min-w-0">
+      <div className="mx-auto w-full max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
+        <span className="science-label">01 / Анализ</span>
+        <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">
+          Анализ последовательности
+        </h1>
+        <p className="muted mt-4 max-w-2xl leading-7">
+          {user.name}, вставьте последовательность ДНК. Чтобы найти мутации, добавьте эталон той же
+          длины.
+        </p>
 
-      <div className="relative mx-auto max-w-5xl px-6 py-10">
-        <div className="mb-8">
-          <p className="text-sm text-emerald-400">Здравствуйте, {user.name}</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Анализ последовательности</h1>
-          <p className="muted mt-2">
-            Вставьте последовательность ДНК. Чтобы найти мутации, добавьте эталон той же длины.
-          </p>
-        </div>
-
-        <section className="card p-6">
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label className="label">Исследуемая последовательность</label>
+        {/* ввод */}
+        <section className="card mt-8 min-w-0 p-5 sm:p-6">
+          <div className="grid min-w-0 gap-5 md:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-2">
+              <label className="label" htmlFor="seq">
+                Исследуемая последовательность
+              </label>
               <textarea
-                className="input mono h-40 resize-y"
+                id="seq"
+                className="input mono h-40 resize-y text-sm"
                 placeholder="ATGGTGCACCTGACT..."
                 value={sequence}
                 onChange={(e) => setSequence(e.target.value)}
@@ -238,10 +243,13 @@ export default function Analyze() {
               <p className="muted text-xs">Символы A, T, G, C. Можно вставить FASTA.</p>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="label">Эталон (необязательно)</label>
+            <div className="flex min-w-0 flex-col gap-2">
+              <label className="label" htmlFor="ref">
+                Эталон (необязательно)
+              </label>
               <textarea
-                className="input mono h-40 resize-y"
+                id="ref"
+                className="input mono h-40 resize-y text-sm"
                 placeholder="Нормальная последовательность той же длины"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
@@ -250,11 +258,7 @@ export default function Analyze() {
             </div>
           </div>
 
-          {error && (
-            <p className="mt-5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </p>
-          )}
+          {error && <p className="alert-error mt-5">{error}</p>}
 
           <div className="mt-6 flex flex-wrap gap-3">
             <button
@@ -267,36 +271,46 @@ export default function Analyze() {
             <button onClick={fillExample} className="btn btn-ghost">
               Вставить пример
             </button>
-            <button onClick={() => router.push("/cases")} className="btn btn-ghost">
+            <Link href="/cases" className="btn btn-ghost">
               Выбрать кейс
-            </button>
+            </Link>
           </div>
         </section>
 
         {result && (
-          <section className="mt-10 flex flex-col gap-6">
-            <h2 className="text-xl font-semibold">Результат</h2>
-
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <Stat label="Длина" value={`${result.stats.length} нт`} />
-              <Stat label="GC-состав" value={`${result.stats.gc_percent}%`} />
-              <Stat label="A / T" value={`${result.stats.counts.A} / ${result.stats.counts.T}`} />
-              <Stat label="G / C" value={`${result.stats.counts.G} / ${result.stats.counts.C}`} />
+          <section className="mt-12 flex min-w-0 flex-col gap-6">
+            <div>
+              <span className="science-label">02 / Результат</span>
+              <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Что получилось</h2>
             </div>
 
-            <div className="card p-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                ["Длина", `${result.stats.length} нт`],
+                ["GC-состав", `${result.stats.gc_percent}%`],
+                ["A / T", `${result.stats.counts.A} / ${result.stats.counts.T}`],
+                ["G / C", `${result.stats.counts.G} / ${result.stats.counts.C}`],
+              ].map(([label, value]) => (
+                <div key={label} className="card min-w-0 p-4">
+                  <p className="text-xl font-bold sm:text-2xl">{value}</p>
+                  <p className="muted mt-1 text-xs">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="panel-ink min-w-0 p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold">Последовательность</h3>
-                <div className="mono flex gap-3 text-xs">
+                <span className="mono text-[10px] text-white/60">DNA SEQUENCE</span>
+                <span className="mono flex gap-3 text-[11px]">
                   {["A", "T", "G", "C"].map((n) => (
                     <span key={n} className={`nt-${n}`}>
-                      ● {n}
+                      {n}
                     </span>
                   ))}
-                  {result.mutations && <span className="text-red-400">● мутация</span>}
-                </div>
+                  {result.mutations && <span className="text-[#ff8a9a]">мутация</span>}
+                </span>
               </div>
-              <p className="mono break-all text-lg leading-8 tracking-wider">
+              <p className="mono break-all text-base leading-8 tracking-wider sm:text-lg">
                 {result.sequence.split("").map((nt, i) => (
                   <span
                     key={i}
@@ -309,47 +323,44 @@ export default function Analyze() {
               </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="card p-5">
-                <h3 className="mb-3 font-semibold">РНК (транскрипция)</h3>
-                <p className="mono break-all text-sm leading-7 text-sky-200">{result.stats.rna}</p>
+            <div className="grid min-w-0 gap-4 md:grid-cols-2">
+              <div className="card min-w-0 p-5">
+                <p className="label">РНК (транскрипция)</p>
+                <p className="mono mt-3 break-all text-sm leading-7">{result.stats.rna}</p>
               </div>
-              <div className="card p-5">
-                <h3 className="mb-3 font-semibold">Белок (трансляция)</h3>
-                <p className="mono break-all text-sm leading-7 text-emerald-200">
-                  {result.stats.protein}
-                </p>
+              <div className="card min-w-0 p-5">
+                <p className="label">Белок (трансляция)</p>
+                <p className="mono mt-3 break-all text-sm leading-7">{result.stats.protein}</p>
               </div>
             </div>
 
             {result.mutations && (
-              <div className="card overflow-hidden">
-                <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-                  <h3 className="font-semibold">Найденные мутации</h3>
-                  <span className="rounded-full bg-white/10 px-3 py-0.5 text-sm">
-                    {result.mutations.length}
-                  </span>
+              <div className="card min-w-0 overflow-hidden">
+                <div className="rule-b flex items-center justify-between px-5 py-4">
+                  <h3 className="font-bold">Найденные мутации</h3>
+                  <span className="badge b-lav">{result.mutations.length}</span>
                 </div>
 
                 {result.mutations.length === 0 ? (
-                  <p className="muted p-5">Отличий от эталона нет.</p>
+                  <p className="muted p-5 text-sm">Отличий от эталона нет.</p>
                 ) : (
                   <>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
-                        <thead className="muted text-xs uppercase tracking-wider">
-                          <tr className="border-b border-white/10">
-                            <th className="px-5 py-3 font-medium">Позиция</th>
-                            <th className="px-5 py-3 font-medium">Замена</th>
-                            <th className="px-5 py-3 font-medium">Кодон</th>
-                            <th className="px-5 py-3 font-medium">Аминокислота</th>
-                            <th className="px-5 py-3 font-medium">Эффект</th>
-                            <th className="px-5 py-3 font-medium">ML-ориентир</th>
+                        <thead>
+                          <tr className="rule-b">
+                            {["Позиция", "Замена", "Кодон", "Аминокислота", "Эффект", "ML-ориентир"].map(
+                              (h) => (
+                                <th key={h} className="label px-5 py-3 font-semibold">
+                                  {h}
+                                </th>
+                              )
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {result.mutations.map((m) => (
-                            <tr key={m.position} className="border-b border-white/5 last:border-0">
+                            <tr key={m.position} className="rule-b last:border-0">
                               <td className="mono px-5 py-3">{m.position}</td>
                               <td className="mono px-5 py-3">
                                 {m.ref} → {m.alt}
@@ -361,24 +372,28 @@ export default function Analyze() {
                                 {m.ref_aa ? `${m.ref_aa} → ${m.alt_aa}` : "—"}
                               </td>
                               <td className="px-5 py-3">
-                                {m.effect ? (
-                                  <span
-                                    className={`rounded-full border px-2.5 py-1 text-xs ${effectClass(m.effect)}`}
-                                  >
-                                    {m.effect}
-                                  </span>
-                                ) : (
-                                  "—"
-                                )}
+                                {m.effect ? <span className={effectBadge(m.effect)}>{m.effect}</span> : "—"}
                               </td>
                               <td className="px-5 py-3">
                                 {m.ml ? (
-                                  <span
-                                    className={`rounded-full border px-2.5 py-1 text-xs ${mlClass(m.ml.label)}`}
-                                    title={`Оценка модели: ${Math.round(m.ml.probability * 100)}%`}
-                                  >
-                                    {m.ml.label}
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={mlBadge(m.ml.label)}
+                                      title={`Оценка модели: ${Math.round(m.ml.probability * 100)}%`}
+                                    >
+                                      {m.ml.label}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExplainFor(explainFor === m.position ? null : m.position)
+                                      }
+                                      aria-expanded={explainFor === m.position}
+                                      className="link text-xs"
+                                    >
+                                      Почему?
+                                    </button>
+                                  </div>
                                 ) : (
                                   "—"
                                 )}
@@ -388,29 +403,27 @@ export default function Analyze() {
                         </tbody>
                       </table>
                     </div>
-                    {hasMl && (
-                      <p className="muted border-t border-white/10 px-5 py-3 text-xs leading-5">
-                        ML-ориентир это оценка учебной модели, обученной на данных ClinVar. Она
-                        учитывает только свойства пары аминокислот (качество: ROC AUC около 0.74 на
-                        новых генах), не является диагнозом и не заменяет консультацию врача-генетика.
-                        Для синонимичных и нонсенс-мутаций оценка не рассчитывается.
-                      </p>
+                    {hasMl && <p className="muted rule-t px-5 py-3 text-xs leading-5">{ML_NOTE}</p>}
+                    {explainFor && result.mutations.find((x) => x.position === explainFor) && (
+                      <div className="rule-t p-4 sm:p-5">
+                        <MlExplain
+                          m={result.mutations.find((x) => x.position === explainFor)}
+                          onClose={() => setExplainFor(null)}
+                        />
+                      </div>
                     )}
                   </>
                 )}
               </div>
             )}
 
-            <div className="card border-emerald-500/30 bg-emerald-500/[0.04] p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-lg">
-                    ✨
-                  </span>
-                  <div>
-                    <h3 className="font-semibold">ИИ-репетитор</h3>
-                    <p className="muted text-xs">Объяснение, задания и проверка ваших ответов</p>
-                  </div>
+            {/* ИИ-репетитор */}
+            <div className="science-panel min-w-0 p-5 sm:p-7">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <span className="science-label">03 / ИИ-репетитор</span>
+                  <h3 className="mt-3 text-xl font-bold sm:text-2xl">Объяснение и задания</h3>
+                  <p className="muted mt-1 text-sm">Проверка ответов и баллы за кейс</p>
                 </div>
                 <button onClick={handleExplain} disabled={aiLoading} className="btn btn-primary">
                   {aiLoading ? (
@@ -423,97 +436,92 @@ export default function Analyze() {
                 </button>
               </div>
 
-              {aiError && (
-                <p className="mt-5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                  {aiError}
-                </p>
-              )}
+              {aiError && <p className="alert-error mt-5">{aiError}</p>}
 
               {ai && (
-                <div className="mt-6 flex flex-col gap-6">
-                  <div>
-                    <h4 className="label mb-2 uppercase tracking-wider">Объяснение</h4>
-                    <p className="whitespace-pre-line leading-7">{ai.explanation}</p>
+                <div className="mt-6 flex min-w-0 flex-col gap-6">
+                  <div className="card min-w-0 p-5">
+                    <p className="label">Объяснение</p>
+                    <p className="mt-3 whitespace-pre-line leading-7">{ai.explanation}</p>
                   </div>
 
-                  <div>
-                    <h4 className="label mb-3 uppercase tracking-wider">Задания</h4>
+                  <div className="min-w-0">
+                    <p className="label mb-3">Задания</p>
                     <ol className="flex flex-col gap-4">
                       {ai.tasks.map((t, i) => (
-                        <li key={i} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                          <div className="flex gap-3">
-                            <span className="mono flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-sm font-bold text-emerald-300">
-                              {i + 1}
-                            </span>
-                            <div className="flex-1">
-                              {t.topic && (
-                                <span className="mb-2 inline-block rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs muted">
-                                  {t.topic}
-                                </span>
-                              )}
-                              <p className="font-medium leading-6">{t.question}</p>
-                              {t.hint && <p className="muted mt-1 text-sm">Подсказка: {t.hint}</p>}
+                        <li key={i} className="card min-w-0 p-5">
+                          {t.topic && <span className="badge b-lav mb-3">{t.topic}</span>}
+                          <p className="font-semibold leading-6">
+                            <span className="mono mr-2 text-[#A499B3]">{String(i + 1).padStart(2, "0")}</span>
+                            {t.question}
+                          </p>
+                          {t.hint && <p className="muted mt-2 text-sm">Подсказка: {t.hint}</p>}
 
-                              <textarea
-                                className="input mt-3 h-20 resize-y text-sm"
-                                placeholder="Введите ваш ответ..."
-                                value={answers[i] || ""}
-                                onChange={(e) =>
-                                  setAnswers((p) => ({ ...p, [i]: e.target.value }))
-                                }
-                              />
+                          <textarea
+                            className="input mt-4 h-24 resize-y text-sm"
+                            placeholder="Введите ваш ответ..."
+                            value={answers[i] || ""}
+                            onChange={(e) => setAnswers((p) => ({ ...p, [i]: e.target.value }))}
+                          />
 
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                  onClick={() => handleCheck(i)}
-                                  disabled={checking[i] || !(answers[i] || "").trim()}
-                                  className="btn btn-primary btn-sm"
-                                >
-                                  {checking[i] ? <span className="spinner" /> : "Проверить ответ"}
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    setShownAnswers((p) => ({ ...p, [i]: !p[i] }))
-                                  }
-                                  className="btn btn-ghost btn-sm"
-                                >
-                                  {shownAnswers[i] ? "Скрыть ответ" : "Показать правильный ответ"}
-                                </button>
-                              </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              onClick={() => handleCheck(i)}
+                              disabled={checking[i] || !(answers[i] || "").trim()}
+                              className="btn btn-primary btn-sm"
+                            >
+                              {checking[i] ? <span className="spinner" /> : "Проверить ответ"}
+                            </button>
+                            <button
+                              onClick={() => setShownAnswers((p) => ({ ...p, [i]: !p[i] }))}
+                              className="btn btn-ghost btn-sm"
+                            >
+                              {shownAnswers[i] ? "Скрыть ответ" : "Показать правильный ответ"}
+                            </button>
+                          </div>
 
-                              {checkErrors[i] && (
-                                <p className="mt-3 text-sm text-red-300">{checkErrors[i]}</p>
-                              )}
+                          {checkErrors[i] && <p className="alert-error mt-3">{checkErrors[i]}</p>}
 
-                              {checks[i] && (
-                                <div
-                                  className={`mt-3 rounded-lg border p-3 text-sm ${verdictClass(checks[i].verdict)}`}
-                                >
-                                  <p className="font-semibold">{checks[i].verdict}</p>
-                                  <p className="mt-1 leading-6">{checks[i].feedback}</p>
-                                  <p className="muted mt-2 text-xs">
-                                    Результат учтён в вашем{" "}
-                                    <Link href="/profile" className="text-emerald-400 underline">
-                                      профиле
-                                    </Link>
-                                  </p>
-                                </div>
-                              )}
+                          {checks[i] && (
+                            <div className={`${verdictBox(checks[i].verdict)} mt-3`}>
+                              <p className="font-semibold">{checks[i].verdict}</p>
+                              <p className="mt-1 leading-6">{checks[i].feedback}</p>
 
-                              {shownAnswers[i] && (
-                                <p className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3 text-sm leading-6">
-                                  <span className="muted">Эталонный ответ: </span>
-                                  {t.answer}
+                              {checks[i].case && (
+                                <p className="mt-2 text-xs">
+                                  Баллы за кейс: {checks[i].case.points} из {checks[i].case.max_points}
+                                  {checks[i].case.completed && ". Кейс пройден."}
                                 </p>
                               )}
+
+                              {checks[i].case && checks[i].case.level_up && (
+                                <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-[#2B2D42]">
+                                  Новый уровень: {checks[i].case.level_up}. Открыты кейсы следующего
+                                  уровня.
+                                </p>
+                              )}
+
+                              <p className="mt-2 text-xs">
+                                Результат учтён в вашем{" "}
+                                <Link href="/profile" className="link">
+                                  профиле
+                                </Link>
+                              </p>
                             </div>
-                          </div>
+                          )}
+
+                          {shownAnswers[i] && (
+                            <p className="tint mt-3 p-3 text-sm leading-6">
+                              <span className="muted">Эталонный ответ: </span>
+                              {t.answer}
+                            </p>
+                          )}
                         </li>
                       ))}
                     </ol>
                   </div>
 
-                  <p className="muted text-xs">
+                  <p className="muted text-xs leading-5">
                     Объяснение и оценка ответов сгенерированы ИИ и могут содержать неточности.
                     Проверяйте важные факты по учебнику.
                   </p>
@@ -524,14 +532,5 @@ export default function Analyze() {
         )}
       </div>
     </main>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="card p-4 text-center">
-      <p className="muted text-xs uppercase tracking-wider">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
-    </div>
   );
 }

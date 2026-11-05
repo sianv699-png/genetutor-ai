@@ -30,7 +30,7 @@ export default function Register() {
       }
       saveToken(data.token);
       router.push("/analyze");
-    } catch (err) {
+    } catch {
       setError("Не удалось связаться с сервером. Запущен ли бэкенд?");
     } finally {
       setLoading(false);
@@ -38,18 +38,22 @@ export default function Register() {
   }
 
   return (
-    <main className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden px-6 py-12">
-      <div className="bg-aurora pointer-events-none absolute inset-0" />
-
-      <form onSubmit={handleSubmit} className="card relative flex w-full max-w-md flex-col gap-5 p-8 shadow-2xl shadow-emerald-500/5">
+    <main className="flex w-full justify-center px-5 py-14 sm:py-20">
+      <form onSubmit={handleSubmit} className="card flex w-full max-w-md min-w-0 flex-col gap-5 p-6 sm:p-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Создать аккаунт</h1>
-          <p className="muted mt-1 text-sm">Это займёт меньше минуты.</p>
+          <span className="science-label">Регистрация</span>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight">Создать аккаунт</h1>
+          <p className="muted mt-2 text-sm leading-6">
+            Аккаунт нужен, чтобы сохранять анализы, баллы и прогресс по кейсам.
+          </p>
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="label">Имя</label>
+          <label className="label" htmlFor="name">
+            Имя
+          </label>
           <input
+            id="name"
             className="input"
             placeholder="Как к вам обращаться"
             value={name}
@@ -59,8 +63,11 @@ export default function Register() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="label">Email</label>
+          <label className="label" htmlFor="email">
+            Email
+          </label>
           <input
+            id="email"
             className="input"
             type="email"
             placeholder="name@example.com"
@@ -71,8 +78,11 @@ export default function Register() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="label">Пароль</label>
+          <label className="label" htmlFor="password">
+            Пароль
+          </label>
           <input
+            id="password"
             className="input"
             type="password"
             placeholder="Не короче 6 символов"
@@ -82,11 +92,7 @@ export default function Register() {
           />
         </div>
 
-        {error && (
-          <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {error}
-          </p>
-        )}
+        {error && <p className="alert-error">{error}</p>}
 
         <button disabled={loading} className="btn btn-primary">
           {loading ? <span className="spinner" /> : "Создать аккаунт"}
@@ -94,7 +100,7 @@ export default function Register() {
 
         <p className="muted text-center text-sm">
           Уже есть аккаунт?{" "}
-          <Link href="/login" className="text-emerald-400 hover:underline">
+          <Link href="/login" className="link">
             Войти
           </Link>
         </p>

@@ -1,147 +1,519 @@
 @import "tailwindcss";
 
+/* =========================
+   THEME
+========================= */
+
 :root {
-  --bg: #070a0f;
-  --surface: rgba(255, 255, 255, 0.035);
-  --border: rgba(255, 255, 255, 0.09);
-  --text: #e8eef5;
-  --muted: #8b98a9;
-  --accent: #34d399;
-  --accent-strong: #10b981;
+  --bg: #fff9f7;
+  --surface: #ffffff;
+  --surface-soft: #f5e9e8;
+
+  --border: rgba(43, 45, 66, 0.12);
+
+  --text: #2b2d42;
+  --muted: #777587;
+
+  --accent: #ef233c;
+  --accent-strong: #d80032;
+  --lavender: #a499b3;
+}
+
+/* =========================
+   RESET
+========================= */
+
+* {
+  box-sizing: border-box;
 }
 
 html {
-  color-scheme: dark;
+  width: 100%;
+  min-height: 100%;
+  scroll-behavior: smooth;
+  color-scheme: light;
 }
 
 body {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  font-family:
+    var(--font-inter),
+    Arial,
+    sans-serif;
+
   -webkit-font-smoothing: antialiased;
 }
+
+main,
+section {
+  width: 100%;
+  min-width: 0;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
+}
+
+/* =========================
+   TYPOGRAPHY
+========================= */
 
 .muted {
   color: var(--muted);
 }
 
 .mono {
-  font-family: var(--font-mono), ui-monospace, Consolas, monospace;
+  font-family:
+    var(--font-mono),
+    Consolas,
+    monospace;
 }
 
-/* фон */
+.science-label {
+  font-family:
+    var(--font-mono),
+    monospace;
+
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.gradient-text {
+  color: var(--accent-strong);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* =========================
+   BACKGROUNDS
+   No glow, no gradients
+========================= */
+
 .bg-aurora {
-  background:
-    radial-gradient(60rem 30rem at 50% -10%, rgba(16, 185, 129, 0.18), transparent 60%),
-    radial-gradient(40rem 25rem at 90% 10%, rgba(56, 189, 248, 0.1), transparent 60%);
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
 }
 
 .bg-grid {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: 48px 48px;
-  -webkit-mask-image: radial-gradient(ellipse at top, black 30%, transparent 75%);
-  mask-image: radial-gradient(ellipse at top, black 30%, transparent 75%);
+  background: none !important;
+  background-image: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 
-/* карточки и поля */
+body::before,
+body::after {
+  content: none !important;
+}
+
+.science-panel {
+  width: 100%;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 2rem;
+  box-shadow: none;
+}
+
+/* =========================
+   CARDS
+========================= */
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: 1.5rem;
+  box-shadow: none;
 }
+
+.card-hover {
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(43, 45, 66, 0.25);
+  box-shadow: none;
+}
+
+/* =========================
+   INPUTS
+========================= */
 
 .label {
   font-size: 0.8rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--muted);
 }
 
 .input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
+  padding: 0.8rem 1rem;
+
+  background: var(--surface);
   color: var(--text);
+
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.input::placeholder {
-  color: #5b6878;
-}
-.input:focus {
-  border-color: var(--accent-strong);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+
+  transition: border-color 0.2s ease;
 }
 
-/* кнопки */
+.input::placeholder {
+  color: var(--lavender);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+/* =========================
+   BUTTONS
+========================= */
+
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0.75rem;
-  padding: 0.7rem 1.25rem;
-  font-weight: 600;
+
+  padding: 0.8rem 1.4rem;
+
+  border: 1px solid transparent;
+  border-radius: 999px;
+
   font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+
+  text-decoration: none;
   cursor: pointer;
-  transition: all 0.15s;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
+
 .btn-sm {
-  padding: 0.45rem 0.9rem;
+  padding: 0.5rem 1rem;
   font-size: 0.85rem;
-  border-radius: 0.6rem;
 }
+
 .btn-primary {
-  background: linear-gradient(180deg, #34d399, #10b981);
-  color: #04130d;
-  box-shadow: 0 8px 24px -8px rgba(16, 185, 129, 0.6);
+  background: var(--text);
+  color: #ffffff;
+  box-shadow: none;
 }
+
 .btn-primary:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  background: var(--accent-strong);
   transform: none;
   filter: none;
 }
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-ghost {
-  border: 1px solid var(--border);
+  background: #ffffff;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border);
 }
+
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.09);
+  background: #f5e9e8;
 }
 
-/* нуклеотиды */
-.nt-A { color: #4ade80; }
-.nt-T { color: #f87171; }
-.nt-G { color: #fbbf24; }
-.nt-C { color: #60a5fa; }
-.nt-N { color: #94a3b8; }
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =========================
+   DNA NUCLEOTIDES
+========================= */
+
+.nt-A {
+  color: #26966a;
+}
+
+.nt-T {
+  color: #ef233c;
+}
+
+.nt-G {
+  color: #bc852c;
+}
+
+.nt-C {
+  color: #7770c8;
+}
+
+.nt-N {
+  color: #94a3b8;
+}
+
 .nt-mut {
-  background: #dc2626;
-  color: #fff;
+  background: #ef233c;
+  color: #ffffff;
   border-radius: 4px;
-  padding: 0 3px;
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.35);
+  padding: 2px 4px;
+  box-shadow: none;
 }
 
-/* индикатор загрузки */
+/* =========================
+   LOADING SPINNER
+========================= */
+
 .spinner {
   display: inline-block;
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+
+  border: 2px solid rgba(43, 45, 66, 0.12);
   border-top-color: var(--accent);
+
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* =========================
+   ACCESSIBILITY
+========================= */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 640px) {
+  .science-panel {
+    border-radius: 1.25rem;
+  }
+
+  .card {
+    border-radius: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===================================================
+   ДОПОЛНЕНИЕ: классы для внутренних страниц
+   (анализ, кейсы, чат, профиль, вход, регистрация)
+=================================================== */
+
+.tint {
+  background: var(--surface-soft);
+  border-radius: 0.85rem;
+}
+
+.rule-b {
+  border-bottom: 1px solid var(--border);
+}
+
+.rule-t {
+  border-top: 1px solid var(--border);
+}
+
+.link {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.btn-primary .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
+/* бейджи */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.b-red {
+  background: #fde8ec;
+  color: #a8002a;
+  border-color: #f6c6d0;
+}
+
+.b-amber {
+  background: #fbefd3;
+  color: #7a5200;
+  border-color: #ebcf93;
+}
+
+.b-green {
+  background: #ddf2e6;
+  color: #17613b;
+  border-color: #a8d8bc;
+}
+
+.b-blue {
+  background: #e1eaf7;
+  color: #264c8c;
+  border-color: #b4c8ea;
+}
+
+.b-lav {
+  background: #f0eaf5;
+  color: var(--text);
+  border-color: #dcd3e6;
+}
+
+/* уведомления и результат проверки ответа */
+.alert-error {
+  padding: 0.6rem 0.9rem;
+  background: #fde8ec;
+  border: 1px solid #f6c6d0;
+  border-radius: 0.85rem;
+  color: #a8002a;
+  font-size: 0.9rem;
+}
+
+.vbox {
+  padding: 0.8rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 0.85rem;
+  font-size: 0.9rem;
+}
+
+.vbox-ok {
+  background: #ddf2e6;
+  border-color: #a8d8bc;
+  color: #17613b;
+}
+
+.vbox-mid {
+  background: #fbefd3;
+  border-color: #ebcf93;
+  color: #7a5200;
+}
+
+.vbox-bad {
+  background: #fde8ec;
+  border-color: #f6c6d0;
+  color: #a8002a;
+}
+
+/* полосы прогресса */
+.track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ece4e3;
+}
+
+.fill-good {
+  background: #1f7a4d;
+}
+
+.fill-mid {
+  background: #c98a00;
+}
+
+.fill-bad {
+  background: var(--accent-strong);
+}
+
+.fill-ink {
+  background: var(--text);
+}
+
+/* тёмная панель для последовательности */
+.panel-ink {
+  background: var(--text);
+  color: #ffffff;
+  border-radius: 1rem;
+}
+
+.panel-ink .nt-A {
+  color: #6ee7a8;
+}
+
+.panel-ink .nt-T {
+  color: #ff8a9a;
+}
+
+.panel-ink .nt-G {
+  color: #f5c76b;
+}
+
+.panel-ink .nt-C {
+  color: #a9a3ee;
+}
+
+.panel-ink .nt-N {
+  color: #b3aec3;
+}
+
+/* значки достижений */
+.medal {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.medal-on {
+  background: var(--text);
+  color: #ffffff;
+}
+
+.medal-off {
+  border: 1.5px dashed var(--lavender);
 }

@@ -4,17 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_URL, getToken, logout } from "@/lib/api";
+import { verdictBadge } from "@/lib/ui";
 
-function verdictClass(verdict = "") {
-  if (verdict.startsWith("неверно")) return "border-red-500/30 bg-red-500/15 text-red-300";
-  if (verdict.startsWith("частично")) return "border-amber-500/30 bg-amber-500/15 text-amber-300";
-  return "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
-}
-
-function barColor(accuracy) {
-  if (accuracy >= 80) return "bg-emerald-400";
-  if (accuracy >= 60) return "bg-amber-400";
-  return "bg-red-400";
+function fillClass(accuracy) {
+  if (accuracy >= 80) return "fill-good";
+  if (accuracy >= 60) return "fill-mid";
+  return "fill-bad";
 }
 
 function formatDate(iso) {
@@ -54,7 +49,7 @@ export default function Profile() {
           return;
         }
         setData(await res.json());
-      } catch (err) {
+      } catch {
         setError("Не удалось связаться с сервером. Запущен ли бэкенд?");
       }
     }
@@ -63,10 +58,8 @@ export default function Profile() {
 
   if (error) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-16">
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300">
-          {error}
-        </p>
+      <main className="mx-auto max-w-3xl px-5 py-16">
+        <p className="alert-error">{error}</p>
       </main>
     );
   }
@@ -85,13 +78,13 @@ export default function Profile() {
   const earned = achievements.filter((a) => a.earned).length;
 
   return (
-    <main className="relative">
-      <div className="bg-aurora pointer-events-none absolute inset-x-0 top-0 h-[28rem]" />
+    <main className="w-full min-w-0">
+      <div className="mx-auto w-full max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
+        <span className="science-label">Профиль</span>
 
-      <div className="relative mx-auto max-w-5xl px-6 py-10">
         {/* шапка профиля */}
-        <section className="card flex flex-wrap items-center gap-5 p-6">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-2xl font-bold text-emerald-300">
+        <section className="card mt-5 flex min-w-0 flex-wrap items-center gap-5 p-6">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#2B2D42] text-2xl font-bold text-white">
             {user.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
@@ -99,31 +92,31 @@ export default function Profile() {
             <p className="muted truncate text-sm">{user.email}</p>
             <p className="muted mt-1 text-xs">С нами с {formatDate(user.joined)}</p>
           </div>
-          <div className="w-full sm:w-64">
+          <div className="w-full sm:w-72">
             <div className="flex items-baseline justify-between">
-              <span className="font-semibold">{level.name}</span>
+              <span className="font-bold">{level.name}</span>
               <span className="muted text-xs">{totals.points} баллов</span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="track mt-2">
               <div
-                className="h-full rounded-full bg-emerald-400"
+                className="fill-ink h-full rounded-full"
                 style={{ width: `${Math.round(level.fraction * 100)}%` }}
               />
             </div>
-            <p className="muted mt-1 text-xs">
+            <p className="muted mt-1.5 text-xs leading-5">
               {level.next_name
-                ? `До уровня «${level.next_name}»: ${Math.max(0, level.next_at - totals.points)} б.`
+                ? `Кейсы уровня «${level.name}»: пройдено ${level.cases_done} из ${level.cases_needed}, дальше «${level.next_name}»`
                 : "Максимальный уровень"}
             </p>
           </div>
         </section>
 
         {isEmpty && (
-          <section className="card mt-6 p-8 text-center">
-            <h2 className="text-xl font-semibold">Здесь появится ваш прогресс</h2>
-            <p className="muted mx-auto mt-2 max-w-md text-sm">
-              Сделайте первый анализ и решите задания от ИИ-репетитора: баллы, темы и достижения
-              будут считаться автоматически.
+          <section className="science-panel mt-6 p-8 text-center">
+            <h2 className="text-xl font-bold">Здесь появится ваш прогресс</h2>
+            <p className="muted mx-auto mt-2 max-w-md text-sm leading-6">
+              Сделайте первый анализ и решите задания от ИИ-репетитора: баллы, темы и достижения будут
+              считаться автоматически.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
               <Link href="/cases" className="btn btn-primary">
@@ -136,56 +129,63 @@ export default function Profile() {
           </section>
         )}
 
-        {/* ключевые показатели */}
-        <section className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Kpi label="Анализов" value={totals.analyses} />
-          <Kpi label="Ответов на задания" value={totals.attempts} />
-          <Kpi label="Точность" value={totals.accuracy === null ? "—" : `${totals.accuracy}%`} />
-          <Kpi label="Дней подряд" value={totals.streak} hint={`активных дней: ${totals.active_days}`} />
+        {/* показатели */}
+        <section className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            ["Анализов", totals.analyses, ""],
+            ["Ответов на задания", totals.attempts, ""],
+            ["Точность", totals.accuracy === null ? "—" : `${totals.accuracy}%`, ""],
+            ["Дней подряд", totals.streak, `активных дней: ${totals.active_days}`],
+          ].map(([label, value, hint]) => (
+            <div key={label} className="card min-w-0 p-4">
+              <p className="text-3xl font-bold">{value}</p>
+              <p className="muted mt-1 text-xs">{label}</p>
+              {hint && <p className="muted mt-0.5 text-[11px]">{hint}</p>}
+            </div>
+          ))}
         </section>
 
-        {/* результаты ответов */}
         {totals.attempts > 0 && (
           <section className="card mt-6 p-5">
-            <h2 className="font-semibold">Результаты ответов</h2>
-            <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-white/10">
-              <div className="bg-emerald-400" style={{ width: `${(totals.correct / totals.attempts) * 100}%` }} />
-              <div className="bg-amber-400" style={{ width: `${(totals.partial / totals.attempts) * 100}%` }} />
-              <div className="bg-red-400" style={{ width: `${(totals.wrong / totals.attempts) * 100}%` }} />
+            <h2 className="font-bold">Результаты ответов</h2>
+            <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-[#ece4e3]">
+              <div className="fill-good" style={{ width: `${(totals.correct / totals.attempts) * 100}%` }} />
+              <div className="fill-mid" style={{ width: `${(totals.partial / totals.attempts) * 100}%` }} />
+              <div className="fill-bad" style={{ width: `${(totals.wrong / totals.attempts) * 100}%` }} />
             </div>
             <div className="muted mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
               <span>
-                <span className="text-emerald-400">●</span> верно: {totals.correct}
+                <span className="text-[#1f7a4d]">●</span> верно: {totals.correct}
               </span>
               <span>
-                <span className="text-amber-400">●</span> частично: {totals.partial}
+                <span className="text-[#c98a00]">●</span> частично: {totals.partial}
               </span>
               <span>
-                <span className="text-red-400">●</span> неверно: {totals.wrong}
+                <span className="text-[#d80032]">●</span> неверно: {totals.wrong}
               </span>
             </div>
           </section>
         )}
 
-        <div className="mt-6 grid gap-6 md:grid-cols-2">
+        <div className="mt-6 grid min-w-0 gap-6 md:grid-cols-2">
           {/* темы */}
-          <section className="card p-5">
-            <h2 className="font-semibold">Успехи по темам</h2>
+          <section className="card min-w-0 p-5">
+            <h2 className="font-bold">Успехи по темам</h2>
             {by_topic.length === 0 ? (
               <p className="muted mt-3 text-sm">Ответьте на задания, и здесь появится статистика по темам.</p>
             ) : (
               <ul className="mt-4 flex flex-col gap-4">
                 {by_topic.map((t) => (
                   <li key={t.topic}>
-                    <div className="flex items-baseline justify-between text-sm">
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
                       <span>{t.topic}</span>
-                      <span className="muted text-xs">
-                        {t.accuracy}% · ответов: {t.attempts}
+                      <span className="muted shrink-0 text-xs">
+                        {t.accuracy}%, ответов: {t.attempts}
                       </span>
                     </div>
-                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="track mt-1.5">
                       <div
-                        className={`h-full rounded-full ${barColor(t.accuracy)}`}
+                        className={`${fillClass(t.accuracy)} h-full rounded-full`}
                         style={{ width: `${Math.max(t.accuracy, 3)}%` }}
                       />
                     </div>
@@ -195,10 +195,10 @@ export default function Profile() {
             )}
 
             {weak_topics.length > 0 && (
-              <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
-                <p className="font-semibold text-amber-300">Стоит повторить</p>
+              <div className="tint mt-5 p-4 text-sm">
+                <p className="font-bold">Стоит повторить</p>
                 <p className="mt-1 leading-6">{weak_topics.join(", ")}</p>
-                <Link href="/agent" className="mt-3 inline-block text-emerald-400 underline">
+                <Link href="/agent" className="link mt-3 inline-block">
                   Попросить репетитора объяснить тему
                 </Link>
               </div>
@@ -206,16 +206,16 @@ export default function Profile() {
           </section>
 
           {/* активность */}
-          <section className="card p-5">
-            <h2 className="font-semibold">Активность за 7 дней</h2>
+          <section className="card min-w-0 p-5">
+            <h2 className="font-bold">Активность за 7 дней</h2>
             <p className="muted mt-1 text-xs">Анализы и ответы на задания</p>
             <div className="mt-5 flex h-40 items-end gap-3">
               {last7.map((d) => (
                 <div key={d.date} className="flex flex-1 flex-col items-center gap-2">
-                  <span className="muted text-xs">{d.count > 0 ? d.count : ""}</span>
+                  <span className="muted h-4 text-xs">{d.count > 0 ? d.count : ""}</span>
                   <div className="flex h-24 w-full items-end">
                     <div
-                      className={`w-full rounded-t-md ${d.count > 0 ? "bg-emerald-400" : "bg-white/10"}`}
+                      className={`w-full rounded-t-md ${d.count > 0 ? "fill-ink" : "bg-[#ece4e3]"}`}
                       style={{ height: `${d.count > 0 ? Math.max((d.count / maxDay) * 100, 8) : 4}%` }}
                     />
                   </div>
@@ -227,27 +227,26 @@ export default function Profile() {
         </div>
 
         {/* достижения */}
-        <section className="card mt-6 p-5">
+        <section className="mt-6">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-semibold">Достижения</h2>
+            <h2 className="font-bold">Достижения</h2>
             <span className="muted text-sm">
               {earned} из {achievements.length}
             </span>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 md:grid-cols-3">
             {achievements.map((a) => (
               <div
                 key={a.title}
-                className={`rounded-xl border p-4 ${
-                  a.earned
-                    ? "border-emerald-500/30 bg-emerald-500/10"
-                    : "border-white/10 bg-white/[0.03] opacity-60"
+                className={`flex gap-3 rounded-2xl border p-4 ${
+                  a.earned ? "border-[#2B2D42]/25 bg-white" : "border-[#2B2D42]/10 bg-transparent opacity-60"
                 }`}
               >
-                <p className="font-medium">
-                  {a.earned ? "🏅" : "🔒"} {a.title}
-                </p>
-                <p className="muted mt-1 text-xs leading-5">{a.description}</p>
+                <span className={`medal ${a.earned ? "medal-on" : "medal-off"}`}>{a.earned ? "✓" : ""}</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{a.title}</p>
+                  <p className="muted mt-1 text-xs leading-5">{a.description}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -255,8 +254,8 @@ export default function Profile() {
 
         {/* последние ответы */}
         <section className="card mt-6 overflow-hidden">
-          <div className="border-b border-white/10 px-5 py-4">
-            <h2 className="font-semibold">Последние ответы</h2>
+          <div className="rule-b px-5 py-4">
+            <h2 className="font-bold">Последние ответы</h2>
           </div>
           {recent.length === 0 ? (
             <p className="muted p-5 text-sm">Пока нет ответов.</p>
@@ -265,38 +264,26 @@ export default function Profile() {
               {recent.map((r, i) => (
                 <li
                   key={i}
-                  className="flex flex-wrap items-start justify-between gap-3 border-b border-white/5 px-5 py-3 last:border-0"
+                  className="rule-b flex flex-wrap items-start justify-between gap-3 px-5 py-3 last:border-0"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm leading-6">{r.question}</p>
                     <p className="muted mt-0.5 text-xs">
-                      {r.topic} · {formatDate(r.date)}
+                      {r.topic}, {formatDate(r.date)}
                     </p>
                   </div>
-                  <span className={`rounded-full border px-2.5 py-1 text-xs ${verdictClass(r.verdict)}`}>
-                    {r.verdict}
-                  </span>
+                  <span className={verdictBadge(r.verdict)}>{r.verdict}</span>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <p className="muted mt-6 text-xs">
+        <p className="muted mt-6 text-xs leading-5">
           Ваши ответы на задания сохраняются только для расчёта прогресса. Баллы: верный ответ 1,
           частично верный 0.5, неверный 0. Дни считаются по времени UTC.
         </p>
       </div>
     </main>
-  );
-}
-
-function Kpi({ label, value, hint }) {
-  return (
-    <div className="card p-4 text-center">
-      <p className="muted text-xs uppercase tracking-wider">{label}</p>
-      <p className="mt-1 text-3xl font-bold">{value}</p>
-      {hint && <p className="muted mt-1 text-xs">{hint}</p>}
-    </div>
   );
 }

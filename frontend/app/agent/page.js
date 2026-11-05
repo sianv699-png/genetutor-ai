@@ -45,7 +45,7 @@ export default function Agent() {
           return;
         }
         setUser(await res.json());
-      } catch (err) {
+      } catch {
         router.push("/login");
       }
     }
@@ -53,7 +53,7 @@ export default function Agent() {
   }, [router]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, loading]);
 
   async function send(text) {
@@ -89,7 +89,7 @@ export default function Agent() {
         ...prev,
         { role: "model", text: data.reply, tools: data.tools_used || [] },
       ]);
-    } catch (err) {
+    } catch {
       setError("Не удалось связаться с сервером. Запущен ли бэкенд?");
     } finally {
       setLoading(false);
@@ -112,30 +112,26 @@ export default function Agent() {
   }
 
   return (
-    <main className="relative">
-      <div className="bg-aurora pointer-events-none absolute inset-x-0 top-0 h-[28rem]" />
+    <main className="w-full min-w-0">
+      <div className="mx-auto w-full max-w-3xl px-5 py-12 sm:px-8 sm:py-16">
+        <span className="science-label">ИИ-агент</span>
+        <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">GeneTutor-репетитор</h1>
+        <p className="muted mt-4 leading-7">
+          Задавайте вопросы по генетике. Агент сам вызывает инструменты анализа, чтобы расчёты были
+          точными, и объясняет результат.
+        </p>
 
-      <div className="relative mx-auto max-w-3xl px-6 py-10">
-        <div className="mb-6">
-          <p className="text-sm text-emerald-400">ИИ-агент</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">GeneTutor-репетитор</h1>
-          <p className="muted mt-2">
-            Задавайте вопросы по генетике. Агент сам вызывает инструменты анализа, чтобы
-            расчёты были точными, и объясняет результат.
-          </p>
-        </div>
-
-        <div className="card flex min-h-[28rem] flex-col p-5">
-          <div className="flex flex-1 flex-col gap-4">
+        <section className="card mt-8 flex min-h-[26rem] min-w-0 flex-col p-4 sm:p-5">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
             {messages.length === 0 && (
-              <div className="my-auto text-center">
-                <p className="muted mb-4 text-sm">Попробуйте спросить:</p>
+              <div className="my-auto py-6">
+                <p className="label mb-3 text-center">Попробуйте спросить</p>
                 <div className="flex flex-col gap-2">
                   {SUGGESTIONS.map((s) => (
                     <button
                       key={s}
                       onClick={() => send(s)}
-                      className="btn btn-ghost justify-start text-left text-sm"
+                      className="rounded-xl border border-[#2B2D42]/12 bg-white px-4 py-3 text-left text-sm leading-6 transition-colors hover:bg-[#f5e9e8]"
                     >
                       {s}
                     </button>
@@ -147,13 +143,13 @@ export default function Agent() {
             {messages.map((m, i) => (
               <div
                 key={i}
-                className={`flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}
+                className={`flex min-w-0 flex-col gap-1.5 ${
+                  m.role === "user" ? "items-end" : "items-start"
+                }`}
               >
                 <div
-                  className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 ${
-                    m.role === "user"
-                      ? "bg-emerald-500 text-[#04130d]"
-                      : "border border-white/10 bg-white/[0.05]"
+                  className={`max-w-[88%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-6 ${
+                    m.role === "user" ? "bg-[#2B2D42] text-white" : "bg-[#f5e9e8] text-[#2B2D42]"
                   }`}
                 >
                   {m.text}
@@ -161,11 +157,8 @@ export default function Agent() {
                 {m.tools && m.tools.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {[...new Set(m.tools)].map((t) => (
-                      <span
-                        key={t}
-                        className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-300"
-                      >
-                        🔧 {TOOL_LABELS[t] || t}
+                      <span key={t} className="badge b-lav">
+                        Инструмент: {TOOL_LABELS[t] || t}
                       </span>
                     ))}
                   </div>
@@ -174,26 +167,23 @@ export default function Agent() {
             ))}
 
             {loading && (
-              <div className="flex items-center gap-2 text-sm muted">
+              <div className="muted flex items-center gap-2 text-sm">
                 <span className="spinner" /> Агент думает...
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
-          {error && (
-            <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </p>
-          )}
+          {error && <p className="alert-error mt-4">{error}</p>}
 
-          <div className="mt-4 flex gap-3">
+          <div className="rule-t mt-4 flex gap-3 pt-4">
             <textarea
               className="input h-14 resize-none text-sm"
               placeholder="Напишите вопрос... (Enter для отправки)"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              aria-label="Сообщение"
             />
             <button
               onClick={() => send()}
@@ -203,9 +193,9 @@ export default function Agent() {
               Отправить
             </button>
           </div>
-        </div>
+        </section>
 
-        <p className="muted mt-4 text-xs">
+        <p className="muted mt-4 text-xs leading-5">
           Ответы сгенерированы ИИ и могут содержать неточности. Информация учебная и не является
           медицинской.
         </p>
