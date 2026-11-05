@@ -1,6 +1,7 @@
 import datetime
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -52,3 +53,15 @@ class TaskAttempt(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, index=True, nullable=False)
 
     user = relationship("User", back_populates="attempts")
+    
+class CaseProgress(Base):
+    """Баллы пользователя за кейс (максимум задаётся в progress.py)."""
+
+    __tablename__ = "case_progress"
+    __table_args__ = (UniqueConstraint("user_id", "case_id", name="uq_user_case"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    case_id = Column(String(50), nullable=False)
+    points = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

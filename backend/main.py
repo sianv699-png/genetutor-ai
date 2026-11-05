@@ -1,22 +1,48 @@
-from fastapi import FastAPI, Depends, HTTPException
+import time
+
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
-from models import User, Analysis, TaskAttempt
-from auth import hash_password, verify_password, create_token, get_current_user
-from analysis import clean_sequence, validate, basic_stats, find_mutations
+from models import User, Analysis, TaskAttempt, CaseProgress
+from auth import (
+    hash_password,
+    verify_password,
+    create_token,
+    get_current_user,
+)
+from analysis import (
+    clean_sequence,
+    validate,
+    basic_stats,
+    find_mutations,
+)
 from llm import explain_and_tasks, check_answer, LLMError, TOPICS
 from agent import run_agent
-from progress import build_progress
+from progress import (
+    build_progress,
+    tier_status,
+    SCORE,
+    CASE_TIERS,
+    CASE_MAX_POINTS,
+    CASE_PASS_POINTS,
+)
 
 try:
     from ml.predict import predict_missense
-except ImportError:  # модель ещё не создана
-    def predict_missense(ref_aa, alt_aa):
+except ImportError:
+    def predict_missense(ref_aa, alt_aa, **kwargs):
         return None
+
+try:
+    from ml.explain import explain_missense
+except ImportError:  # модуль объяснения оценки ещё не установлен
+    def explain_missense(*args, **kwargs):
+        return None
+
 
 # создаёт таблицы в базе, если их ещё нет (новые таблицы добавляются автоматически)
 Base.metadata.create_all(bind=engine)
@@ -50,6 +76,7 @@ class AnalyzeIn(BaseModel):
 
 class ExplainIn(BaseModel):
     result: dict
+    tier: int = 0
 
 
 class CheckIn(BaseModel):
@@ -58,11 +85,12 @@ class CheckIn(BaseModel):
     reference_answer: str
     student_answer: str
     topic: str = ""
+    case_id: str = ""
 
 
 class AgentIn(BaseModel):
     message: str
-    history: list = []
+    history: list = Field(default_factory=list)
 
 
 @app.get("/api/health")
@@ -110,6 +138,24 @@ def me(user: User = Depends(get_current_user)):
     return {"id": user.id, "name": user.name, "email": user.email}
 
 
+# ---------- ML-оценка мутаций ----------
+
+def _ml_for_mutation(m: dict):
+    """Оценка патогенности одной мутации нейросетью (или старой моделью, если нейросеть недоступна).
+
+    position в мутации — номер нуклеотида (с 1), из него считаем позицию в кодоне и в белке."""
+    pos = m.get("position")
+    try:
+        return predict_missense(
+            m.get("ref_aa"), m.get("alt_aa"),
+            nt_ref=m.get("ref"), nt_alt=m.get("alt"),
+            codon_pos=(pos - 1) % 3 + 1 if pos else None,
+            protein_pos=(pos - 1) // 3 + 1 if pos else None,
+        )
+    except TypeError:  # версия модуля без нуклеотидного контекста
+        return predict_missense(m.get("ref_aa"), m.get("alt_aa"))
+
+
 @app.post("/api/analyze")
 def analyze(
     data: AnalyzeIn,
@@ -136,7 +182,7 @@ def analyze(
         result["reference"] = ref
         result["mutations"] = find_mutations(ref, seq)
         for m in result["mutations"]:
-            pred = predict_missense(m.get("ref_aa"), m.get("alt_aa"))
+            pred = _ml_for_mutation(m)
             if pred:
                 m["ml"] = pred
 
@@ -145,12 +191,119 @@ def analyze(
     return result
 
 
+# ---------- гостевой анализ (без регистрации) ----------
+
+GUEST_WINDOW_SECONDS = 600   # окно подсчёта запросов, секунд
+GUEST_MAX_REQUESTS = 15      # максимум гостевых запросов с одного адреса за окно
+GUEST_MAX_LENGTH = 600       # максимальная длина последовательности для гостя
+_guest_hits = {}
+
+
+def _guest_allowed(ip: str) -> bool:
+    now = time.time()
+    hits = [t for t in _guest_hits.get(ip, []) if now - t < GUEST_WINDOW_SECONDS]
+    allowed = len(hits) < GUEST_MAX_REQUESTS
+    if allowed:
+        hits.append(now)
+    _guest_hits[ip] = hits
+    return allowed
+
+
+@app.post("/api/guest/analyze")
+def guest_analyze(data: AnalyzeIn, request: Request):
+    """Анализ без регистрации: ничего не сохраняется, ИИ не вызывается."""
+    ip = request.client.host if request.client else "unknown"
+    if not _guest_allowed(ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много запросов. Подождите несколько минут или создайте аккаунт.",
+        )
+
+    seq = clean_sequence(data.sequence)
+    error = validate(seq)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    if len(seq) > GUEST_MAX_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"В гостевом режиме максимум {GUEST_MAX_LENGTH} нуклеотидов. Создайте аккаунт для длинных последовательностей.",
+        )
+
+    result = {"sequence": seq, "stats": basic_stats(seq), "mutations": None}
+
+    if data.reference.strip():
+        ref = clean_sequence(data.reference)
+        error = validate(ref)
+        if error:
+            raise HTTPException(status_code=400, detail="Эталон: " + error)
+        if len(ref) != len(seq):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Длины различаются ({len(ref)} и {len(seq)}). Пока поддерживается сравнение одинаковой длины.",
+            )
+        result["reference"] = ref
+        result["mutations"] = find_mutations(ref, seq)
+        for m in result["mutations"]:
+            pred = _ml_for_mutation(m)
+            if pred:
+                m["ml"] = pred
+
+    return result
+
+
+# ---------- объяснение ML-оценки ----------
+
+EXPLAIN_MAX_REQUESTS = 60    # максимум запросов объяснения с одного адреса за окно
+_explain_hits = {}
+
+
+def _explain_allowed(ip: str) -> bool:
+    now = time.time()
+    hits = [t for t in _explain_hits.get(ip, []) if now - t < GUEST_WINDOW_SECONDS]
+    allowed = len(hits) < EXPLAIN_MAX_REQUESTS
+    if allowed:
+        hits.append(now)
+    _explain_hits[ip] = hits
+    return allowed
+
+
+class MlExplainIn(BaseModel):
+    ref_aa: str
+    alt_aa: str
+    nt_ref: str = ""
+    nt_alt: str = ""
+    codon_pos: int = 0
+
+
+@app.post("/api/ml/explain")
+def ml_explain(data: MlExplainIn, request: Request):
+    """Какие свойства замены повлияли на оценку модели. Доступно без регистрации."""
+    ip = request.client.host if request.client else "unknown"
+    if not _explain_allowed(ip):
+        raise HTTPException(status_code=429, detail="Слишком много запросов. Подождите несколько минут.")
+    result = explain_missense(
+        data.ref_aa, data.alt_aa,
+        nt_ref=data.nt_ref or None, nt_alt=data.nt_alt or None,
+        codon_pos=data.codon_pos or None,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Для этой замены оценка модели недоступна.")
+    return result
+
+
+# ---------- ИИ, проверка ответов, прогресс ----------
+
 @app.post("/api/explain")
 def explain(data: ExplainIn, user: User = Depends(get_current_user)):
     try:
-        return explain_and_tasks(data.result)
+        return explain_and_tasks(data.result, data.tier)
     except LLMError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+def load_case_points(db: Session, user_id: int) -> dict:
+    rows = db.query(CaseProgress).filter(CaseProgress.user_id == user_id).all()
+    return {r.case_id: float(r.points) for r in rows}
 
 
 @app.post("/api/check")
@@ -168,31 +321,86 @@ def check(
     except LLMError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
+    question = data.question[:1000]
+    gain = SCORE.get(verdict["verdict"], 0.0)
+    answered_before = (
+        db.query(TaskAttempt)
+        .filter(TaskAttempt.user_id == user.id, TaskAttempt.question == question)
+        .first()
+        is not None
+    )
+
     # сохраняем попытку для профиля и прогресса
     db.add(TaskAttempt(
         user_id=user.id,
         topic=data.topic if data.topic in TOPICS else "Другое",
-        question=data.question[:1000],
+        question=question,
         student_answer=data.student_answer[:2000],
         verdict=verdict["verdict"],
     ))
-    db.commit()
+
+    if data.case_id in CASE_TIERS:
+        before = tier_status(load_case_points(db, user.id))["unlocked"]
+        row = (
+            db.query(CaseProgress)
+            .filter(CaseProgress.user_id == user.id, CaseProgress.case_id == data.case_id)
+            .first()
+        )
+        if row is None:
+            row = CaseProgress(user_id=user.id, case_id=data.case_id, points=0.0)
+            db.add(row)
+        # баллы за кейс: один и тот же вопрос засчитывается один раз, максимум CASE_MAX_POINTS
+        if gain > 0 and not answered_before:
+            row.points = min(CASE_MAX_POINTS, float(row.points or 0.0) + gain)
+        db.commit()
+        status = tier_status(load_case_points(db, user.id))
+        verdict["case"] = {
+            "case_id": data.case_id,
+            "points": float(row.points),
+            "max_points": CASE_MAX_POINTS,
+            "completed": float(row.points) >= CASE_PASS_POINTS,
+            "level_up": status["level"]["name"] if status["unlocked"] > before else None,
+        }
+    else:
+        db.commit()
     return verdict
 
 
+@app.get("/api/case-status")
+def case_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    points = load_case_points(db, user.id)
+    status = tier_status(points)
+    return {
+        "unlocked": status["unlocked"],
+        "level": status["level"],
+        "tiers": status["tiers"],
+        "points": points,
+        "pass_points": CASE_PASS_POINTS,
+        "max_points": CASE_MAX_POINTS,
+    }
+
+
 @app.get("/api/progress")
-def progress(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_progress(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     attempts = (
         db.query(TaskAttempt)
         .filter(TaskAttempt.user_id == user.id)
-        .order_by(TaskAttempt.created_at.desc())
-        .limit(2000)
         .all()
     )
+
     analysis_dates = [
-        row[0] for row in db.query(Analysis.created_at).filter(Analysis.user_id == user.id).all()
+        row[0]
+        for row in db.query(Analysis.created_at)
+        .filter(Analysis.user_id == user.id)
+        .all()
     ]
-    return build_progress(user, attempts, analysis_dates)
+
+    return build_progress(
+        user,
+        attempts,
+        analysis_dates,
+        case_points=load_case_points(db, user.id),
+    )
 
 
 @app.post("/api/agent")

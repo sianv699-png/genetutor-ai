@@ -6,6 +6,52 @@ SCORE = {"верно": 1.0, "частично верно": 0.5, "неверно"
 # (минимум баллов, название уровня)
 LEVELS = [(0, "Новичок"), (5, "Ученик"), (15, "Практик"), (40, "Знаток")]
 
+# ---------- уровни и открытие кейсов ----------
+TIERS = [
+    {"id": 1, "name": "Любопытный"},
+    {"id": 2, "name": "Школьник"},
+    {"id": 3, "name": "Студент"},
+    {"id": 4, "name": "Профессор"},
+]
+# id кейса -> уровень сложности (должно совпадать с frontend/lib/cases.js)
+CASE_TIERS = {
+    "hbb-sickle": 1,
+    "hbb-silent": 1,
+    "hbb-hbc": 2,
+    "hbb-nonsense": 3,
+}
+CASE_MAX_POINTS = 5.0    # больше баллов за один кейс не засчитывается
+CASE_PASS_POINTS = 3.0   # столько баллов нужно, чтобы кейс считался пройденным
+REQUIRED_CASES = 2       # сколько кейсов уровня нужно пройти, чтобы открыть следующий
+
+
+def tier_status(case_points: dict) -> dict:
+    """Текущий уровень пользователя и состояние каждого уровня по баллам за кейсы."""
+    details = []
+    for t in TIERS:
+        ids = [cid for cid, tier in CASE_TIERS.items() if tier == t["id"]]
+        done = sum(1 for cid in ids if case_points.get(cid, 0.0) >= CASE_PASS_POINTS)
+        details.append({"id": t["id"], "name": t["name"], "cases_total": len(ids),
+                        "cases_done": done, "need": min(REQUIRED_CASES, len(ids))})
+    unlocked = 1
+    for i in range(len(TIERS) - 1):
+        if details[i]["need"] > 0 and details[i]["cases_done"] >= details[i]["need"]:
+            unlocked = i + 2
+        else:
+            break
+    for d in details:
+        d["unlocked"] = d["id"] <= unlocked
+    cur = details[unlocked - 1]
+    next_name = TIERS[unlocked]["name"] if unlocked < len(TIERS) else None
+    if next_name is None:
+        fraction = 1.0
+    else:
+        fraction = min(cur["cases_done"] / cur["need"], 1.0) if cur["need"] else 0.0
+    level = {"name": cur["name"], "next_name": next_name, "cases_done": cur["cases_done"],
+             "cases_needed": cur["need"], "fraction": round(fraction, 3), "tier": unlocked}
+    return {"unlocked": unlocked, "level": level, "tiers": details}
+
+
 WEAK_ACCURACY = 70  # тема считается слабой, если точность ниже этого значения (в процентах)
 
 
@@ -39,9 +85,9 @@ def _level(points: float) -> dict:
     return {"name": name, "next_name": None, "next_at": None, "fraction": 1.0}
 
 
-def build_progress(user, attempts: list, analysis_dates: list, today=None) -> dict:
+def build_progress(user, attempts: list, analysis_dates: list, today=None, case_points=None) -> dict:
     today = today or datetime.datetime.now(datetime.timezone.utc).date()
-
+    status = tier_status(case_points or {})
     total = len(attempts)
     correct = sum(1 for a in attempts if a.verdict == "верно")
     partial = sum(1 for a in attempts if a.verdict == "частично верно")
@@ -116,7 +162,8 @@ def build_progress(user, attempts: list, analysis_dates: list, today=None) -> di
             "active_days": len(days),
             "streak": streak,
         },
-        "level": _level(points),
+        "level": status["level"],
+        "tiers": status["tiers"],
         "by_topic": by_topic,
         "weak_topics": [t["topic"] for t in weak],
         "last7": last7,
